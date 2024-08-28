@@ -28,7 +28,7 @@ class PairSelfAttention(Module):
 
 
 def _get_pairs(top_k_centers: torch.Tensor):
-    # breakpoint()
+
     batch_size = top_k_centers.size(dim=0)
     num_objects = top_k_centers.size(dim=1)
 
@@ -65,12 +65,10 @@ def _get_pairs(top_k_centers: torch.Tensor):
     )
 
     # compute the L1-distance for each bbox
-    top_k_centers1 = top_k_centers.unsqueeze(dim=2)
-    top_k_centers2 = top_k_centers.unsqueeze(dim=1)
     bbox_l1 = torch.abs(bbox_coord[..., 2] - bbox_coord[..., 0]) + torch.abs(
         bbox_coord[..., 3] - bbox_coord[..., 1]
     )
-    breakpoint()
+
     # get the corresponding L1-distance of each bbox
     # for example, the index pair for 0 is [0, 1], then we have [L1-distance for bbox0, L1-distance for bbox1]
     bbox_l1_pair = torch.stack(
