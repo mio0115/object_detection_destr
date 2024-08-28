@@ -7,13 +7,23 @@ from ...utils.bbox_utils import from_cxcyhw_to_xyxy
 
 
 class PairSelfAttention(Module):
-    def __init__(
-        self, input_shape: tuple[int, int, int], output_shape: tuple[int, int, int]
-    ) -> None:
+    def __init__(self, input_shape: tuple[int, int, int], heads_num: int) -> None:
         super(PairSelfAttention, self).__init__()
 
         self._input_shape = input_shape
-        self._output_shape = output_shape
+        self._heads_num = heads_num
+
+    @property
+    def input_shape(self):
+        return self._input_shape
+
+    @property
+    def sequence_length(self):
+        return self._input_shape[0]
+
+    @property
+    def heads_num(self):
+        return self._heads_num
 
     def forward(
         self,
@@ -22,13 +32,90 @@ class PairSelfAttention(Module):
         value: torch.Tensor,
         top_k_centers: torch.Tensor,
     ):
+        """Implmentation based on DESTR: Object Detection with Split Transformer
+        Instead of self-attention, authors use pair self-attention.
+        The steps of pair self-attention are as following:
+        1. Pairs up those components of input feature map.
+        2. Compute a2 score.
+        3. Compute o2 score.
+        """
         batch_size = query.size(0)
 
+        """ The following block is to find indices of pairs based on their IoU. 
+        Component a is paired up with Component a' if their IoU is larger than other components
+        To compute A2, we need to pair up indices of (a, b) and (a', b')
+        """
         pairs = _get_pairs(top_k_centers)
+        idx_pairs_l = (
+            torch.stack(
+                [
+                    pairs.unsqueeze(2)[..., 0].broadcast_to(
+                        size=(batch_size, self.sequence_length, self.sequence_length)
+                    ),
+                    pairs.unsqueeze(1)[..., 0].broadcast_to(
+                        size=(batch_size, self.sequence_length, self.sequence_length)
+                    ),
+                ],
+                dim=-1,
+            )
+            .unsqueeze(1)
+            .broadcast_to(
+                size=(
+                    batch_size,
+                    self.heads_num,
+                    self.sequence_length,
+                    self.sequence_length,
+                    2,
+                )
+            )
+        )
+        idx_pairs_r = (
+            torch.stack(
+                [
+                    pairs.unsqueeze(2)[..., 1].broadcast_to(
+                        size=(batch_size, self.sequence_length, self.sequence_length)
+                    ),
+                    pairs.unsqueeze(1)[..., 1].broadcast_to(
+                        size=(batch_size, self.sequence_length, self.sequence_length)
+                    ),
+                ],
+                dim=-1,
+            )
+            .unsqueeze(1)
+            .broadcast_to(
+                size=(
+                    batch_size,
+                    self.heads_num,
+                    self.sequence_length,
+                    self.sequence_length,
+                    2,
+                )
+            )
+        )
+
+        """ We compute A2(a, b) = <q_{pi a}, k_{pi b}> + <q_{pi a'}, k_{pi b'}> """
+        a2 = torch.matmul(query, key.transpose(3, 2))
+
+        a2_l = torch.gather(a2, index=idx_pairs_l, dim=-1)
+        a2_r = torch.gather(a2, index=idx_pairs_r, dim=-1)
+
+        a2 = torch.nn.functional.softmax(
+            (a2_l + a2_r) / torch.sqrt(2 * self.input_shape[-1])
+        )
+        o2 = (
+            torch.matmul(a2, value)
+            .transpose(1, 2)
+            .view(batch_size, self.sequence_length, -1)
+        )
+
+        return o2
 
 
 def _get_pairs(top_k_centers: torch.Tensor):
-
+    """According to DESTR, pair self-attention has better performance than self-attention.
+    For each object query, we only take the pair which has the highest IoU.
+    Then order the pair by their L1-distance decreasingly.
+    """
     batch_size = top_k_centers.size(dim=0)
     num_objects = top_k_centers.size(dim=1)
 
