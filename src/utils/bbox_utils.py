@@ -18,10 +18,10 @@ def from_cxcyhw_to_xyxy(bbox_coord: torch.Tensor) -> torch.Tensor:
 
     new_bbox_coord = torch.stack(
         [
-            torch.maximum(bbox_coord[..., 0] - bbox_coord[..., 3] / 2, 0),
-            torch.maximum(bbox_coord[..., 1] - bbox_coord[..., 2] / 2, 0),
-            torch.minimum(bbox_coord[..., 0] + bbox_coord[..., 3] / 2, 1),
-            torch.minimum(bbox_coord[..., 1] + bbox_coord[..., 2] / 2, 1),
+            torch.clip(bbox_coord[..., 0] - bbox_coord[..., 3] / 2, min=0),
+            torch.clip(bbox_coord[..., 1] - bbox_coord[..., 2] / 2, min=0),
+            torch.clip(bbox_coord[..., 0] + bbox_coord[..., 3] / 2, max=1),
+            torch.clip(bbox_coord[..., 1] + bbox_coord[..., 2] / 2, max=1),
         ],
         dim=-1,
     )
@@ -42,6 +42,7 @@ def from_xyxy_to_cxcyhw(bbox_coord: torch.Tensor) -> torch.Tensor:
     Returns:
         torch.Tensor: Coordinates of the boundary box. (xyxy)
     """
+
     new_bbox_coord = torch.stack(
         [
             (bbox_coord[..., 0] + bbox_coord[..., 2]) / 2,
