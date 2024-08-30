@@ -12,13 +12,13 @@ class DecoderBlock(Module):
         object_queries_shape,
         position_index_2d,
         lambda_: float = 0.5,
-        hidden_dim: int = 512,
+        hidden_dim: int = 256,
     ) -> None:
         super(DecoderBlock, self).__init__()
 
         self._object_queries_shape = object_queries_shape
         self._heads_num = 8
-        self._channels = hidden_dim // 2
+        self._channels = hidden_dim
         self._pos_embed_2d = gen_sineembed_for_position(position_index_2d)
 
         self._lambda = lambda_
@@ -33,54 +33,54 @@ class DecoderBlock(Module):
         self._cls_branch = ClsRegBranch(
             attn_input_shape=object_queries_shape,
             attn_output_shape=(object_queries_shape[0], object_queries_shape[1] // 2),
-            hidden_dim=hidden_dim // 2,
+            hidden_dim=self._channels,
         )
         self._reg_branch = ClsRegBranch(
             attn_input_shape=object_queries_shape,
             attn_output_shape=(object_queries_shape[0], object_queries_shape[1] // 2),
-            hidden_dim=hidden_dim // 2,
+            hidden_dim=self._channels,
         )
 
+        # projection to query, key, value for self-attention
         self._sa_proj_to_q_obj = Linear(
-            in_features=512, out_features=hidden_dim, bias=False
+            in_features=self._channels * 2, out_features=self._channels * 2, bias=False
         )
         self._sa_proj_to_q_pos = Linear(
-            in_features=512, out_features=self._channels, bias=False
+            in_features=self._channels, out_features=self._channels, bias=False
         )
         self._sa_proj_to_k_obj = Linear(
-            in_features=512, out_features=hidden_dim, bias=False
+            in_features=self._channels * 2, out_features=self._channels * 2, bias=False
         )
         self._sa_proj_to_k_pos = Linear(
-            in_features=512, out_features=self._channels, bias=False
+            in_features=self._channels, out_features=self._channels, bias=False
         )
         self._sa_proj_to_v_obj = Linear(
-            in_features=512, out_features=hidden_dim, bias=False
+            in_features=self._channels * 2, out_features=self._channels * 2, bias=False
         )
 
+        # projection to query, key, value for cross-attention
         self._ca_proj_to_q_obj = Linear(
-            in_features=512, out_features=hidden_dim, bias=False
+            in_features=self._channels * 2, out_features=self._channels * 2, bias=False
         )
         self._ca_proj_to_q_pos = Linear(
-            in_features=512, out_features=self._channels, bias=False
+            in_features=self._channels, out_features=self._channels, bias=False
         )
         self._ca_proj_to_k_enc = Linear(
-            in_features=512, out_features=self._channels, bias=False
+            in_features=self._channels, out_features=self._channels, bias=False
         )
         self._ca_proj_to_k_pos = Linear(
-            in_features=512, out_features=self._channels, bias=False
+            in_features=self._channels, out_features=self._channels, bias=False
         )
         self._ca_proj_to_v_enc = Linear(
-            in_features=512, out_features=hidden_dim, bias=False
+            in_features=self._channels, out_features=self._channels, bias=False
         )
 
-        self.norm1 = LayerNorm(512)
-        self.norm2 = LayerNorm(512)
+        self.norm1 = LayerNorm(self._channels * 2)
+        self.norm2 = LayerNorm(self._channels * 2)
         self.dropout1 = Dropout(0.3)
 
     def _split_heads(self, tensor: torch.Tensor):
-        batch_size = tensor.size(0)
-        sequence_length = tensor.size(1)
-        embed_dim = tensor.size(2)
+        batch_size, sequence_length, embed_dim, *_ = tensor.shape
 
         tensor = tensor.view(
             shape=(
@@ -94,9 +94,7 @@ class DecoderBlock(Module):
         return tensor
 
     def _combine_heads(self, tensor: torch.Tensor):
-        batch_size = tensor.size(0)
-        sequence_length = tensor.size(2)
-        embed_dim = tensor.size(3)
+        batch_size, _, sequence_length, embed_dim = tensor.shape
 
         tensor = tensor.transpose(1, 2).view(
             shape=(batch_size, sequence_length, self._heads_num * embed_dim)

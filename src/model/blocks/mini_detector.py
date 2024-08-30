@@ -1,5 +1,5 @@
 import torch
-from torch.nn import Module, Sequential, Conv2d, Linear, Sigmoid, ReLU
+from torch.nn import Module, ModuleList, Conv2d, Linear, Sigmoid, ReLU, Sequential
 
 from ...utils.positional_embedding import gen_sineembed_for_position
 
@@ -21,7 +21,7 @@ class MiniDetector(Module):
         self._hidden_dim = hidden_dim
         self._pos_embed_2d = gen_sineembed_for_position(position_index_2d)
 
-        self._cls_conv = Sequential(
+        self._cls_conv = ModuleList(
             [
                 Conv2d(
                     in_channels=hidden_dim,
@@ -33,7 +33,7 @@ class MiniDetector(Module):
                 for _ in range(4)
             ]
         )
-        self._reg_conv = Sequential(
+        self._reg_conv = ModuleList(
             [
                 Conv2d(
                     in_channels=hidden_dim,
@@ -45,7 +45,7 @@ class MiniDetector(Module):
                 for _ in range(4)
             ]
         )
-        self._pos_conv = Sequential(
+        self._pos_conv = ModuleList(
             [
                 Conv2d(
                     in_channels=hidden_dim,
@@ -60,14 +60,12 @@ class MiniDetector(Module):
         )
 
         self._cls_head = Sequential(
-            [Linear(in_features=hidden_dim, out_features=cls_num), Sigmoid()]
+            Linear(in_features=hidden_dim, out_features=cls_num), Sigmoid()
         )
         self._reg_head = reg_ffn
         self._pos_head = Sequential(
-            [
-                Linear(in_features=hidden_dim, out_features=hidden_dim),
-                Linear(in_features=hidden_dim, out_features=2),
-            ]
+            Linear(in_features=hidden_dim, out_features=hidden_dim),
+            Linear(in_features=hidden_dim, out_features=2),     
         )
     
     @property
@@ -94,19 +92,22 @@ class MiniDetector(Module):
         batch_size = inputs.size(0)
 
         cls_x = inputs
-        cls_x = self._cls_conv(cls_x)
+        for conv in self._cls_conv:
+            cls_x = conv(cls_x)
         cls_x = cls_x.view(shape=(batch_size, self.sequence_length, self.embedding_dim))
         cls_features = cls_x
         cls_scores = self._cls_head(cls_x)
 
         pos_query = self._pos_embed_2d.view(shape=(batch_size, self.input_height, self.input_width, self.input_shape[-1]))
-        pos_features = self._pos_conv(pos_query).view(shape=(batch_size, self.sequence_length, self.embedding_dim))
+        for conv in self._pos_conv:
+            pos_features = conv(pos_query).view(shape=(batch_size, self.sequence_length, self.embedding_dim))
 
         pos_center_offset = self._pos_head(pos_features)
         pos_center_offset = torch.concat([[pos_center_offset, torch.zeros(size=(batch_size, self.sequence_length, 2), dtype=torch.float32)]])
 
         reg_x = inputs
-        reg_x = self._reg_conv(reg_x)
+        for conv in self._reg_conv:
+            reg_x = conv(reg_x)
         reg_x = reg_x.view(shape=(batch_size, self.sequence_length, self.embedding_dim))
         reg_features = reg_x
         bbox_coord = self._reg_head(reg_x) + pos_center_offset
