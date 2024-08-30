@@ -138,3 +138,13 @@ def build_position_encoding(args):
         raise ValueError(f"not supported {args.position_embedding}")
 
     return position_embedding
+
+
+# we only use sine version
+def build_position_encoding_fix():
+    hidden_dim = 256
+    N_steps = hidden_dim // 2
+
+    position_embedding = PositionEmbeddingSine(N_steps, normalize=True)
+
+    return position_embedding

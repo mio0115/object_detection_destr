@@ -19,8 +19,11 @@ from torch import nn
 from torchvision.models._utils import IntermediateLayerGetter
 from typing import Dict, List
 
-from ...utils.misc import NestedTensor, is_main_process
-from ...utils.position_encoding_cdetr import build_position_encoding
+from ...utils.misc import NestedTensor
+from ...utils.position_encoding_cdetr import (
+    build_position_encoding_fix,
+    build_position_encoding,
+)
 
 
 class FrozenBatchNorm2d(torch.nn.Module):
@@ -128,9 +131,14 @@ class Backbone(BackboneBase):
         return_interm_layers: bool,
         dilation: bool,
     ):
+        # backbone = getattr(torchvision.models, name)(
+        #    replace_stride_with_dilation=[False, False, dilation],
+        #    pretrained=is_main_process(),
+        #    norm_layer=FrozenBatchNorm2d,
+        # )
         backbone = getattr(torchvision.models, name)(
             replace_stride_with_dilation=[False, False, dilation],
-            pretrained=is_main_process(),
+            pretrained=True,
             norm_layer=FrozenBatchNorm2d,
         )
         num_channels = 512 if name in ("resnet18", "resnet34") else 2048
@@ -159,6 +167,19 @@ class Joiner(nn.Sequential):
 
 def build_backbone(args):
     position_embedding = build_position_encoding(args)
+    train_backbone = args.lr_backbone > 0
+    # return_interm_layers = args.masks
+    return_interm_layers = True
+    backbone = Backbone(
+        args.backbone, train_backbone, return_interm_layers, args.dilation
+    )
+    model = Joiner(backbone, position_embedding)
+    model.num_channels = backbone.num_channels
+    return model
+
+
+def build_backbone_customized(args):
+    position_embedding = build_position_encoding_fix()
     train_backbone = args.lr_backbone > 0
     # return_interm_layers = args.masks
     return_interm_layers = True
