@@ -17,12 +17,14 @@ if __name__ == "__main__":
         "--learning_rate",
         type=float,
         default=1e-3,
+        dest="lr",
         help="Learning rate of the model except backbone",
     )
     parser.add_argument(
-        "--backbone_lr",
+        "--lr_backbone",
         type=float,
         default=1e-4,
+        dest="lr_backbone",
         help="Learning rate of backbone. If you want to freeze the backbone, set it to 0",
     )
 
