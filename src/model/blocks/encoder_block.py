@@ -1,4 +1,5 @@
 import torch
+from torch import nn
 from torch.nn import Linear, Dropout, LayerNorm, ReLU
 
 from ..attention.self_attention import SelfAttention
@@ -94,3 +95,23 @@ class EncoderBlock(torch.nn.Module):
         x = self.norm2(x)
 
         return x
+
+
+def build_encoder(
+    position_index_2d, hidden_dim: int = 256, num_encoder_blocks: int = 6
+):
+    encoder = nn.ModuleList(
+        [
+            EncoderBlock(
+                block_idx=idx,
+                position_index_2d=position_index_2d,
+                input_shape=(49, hidden_dim),
+                heads_num=8,
+                d_k=hidden_dim,
+                d_v=hidden_dim,
+            )
+            for idx in range(num_encoder_blocks)
+        ]
+    )
+
+    return encoder
