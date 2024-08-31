@@ -50,7 +50,6 @@ class Encoder(nn.Module):
 class EncoderBlock(nn.Module):
     def __init__(
         self,
-        block_idx: int,
         position_index_2d: torch.Tensor,
         d_model: int = 256,
         input_shape: tuple[int, int] = (49, 256),
@@ -159,17 +158,14 @@ class EncoderBlock(nn.Module):
 
 
 def build_encoder(args, position_index_2d: torch.Tensor):
-    encoder = nn.ModuleList(
-        [
-            EncoderBlock(
-                block_idx=idx,
-                position_index_2d=position_index_2d,
-                input_shape=(49, args.hidden_dim),
-                d_k=args.hidden_dim,
-                d_v=args.hidden_dim,
-            )
-            for idx in range(args.num_encoder_blocks)
-        ]
+    encoder = Encoder(
+        encoder_block=EncoderBlock(
+            position_index_2d=position_index_2d,
+            input_shape=(49, args.hidden_dim),
+            d_k=args.hidden_dim,
+            d_v=args.hidden_dim,
+        ),
+        num_encoder_blocks=args.num_encoder_blocks,
     )
 
     return encoder
