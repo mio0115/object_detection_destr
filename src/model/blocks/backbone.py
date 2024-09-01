@@ -138,7 +138,7 @@ class Backbone(BackboneBase):
         # )
         backbone = getattr(torchvision.models, name)(
             replace_stride_with_dilation=[False, False, dilation],
-            pretrained=True,
+            weights=torchvision.models.ResNet50_Weights.DEFAULT,
             norm_layer=FrozenBatchNorm2d,
         )
         num_channels = 512 if name in ("resnet18", "resnet34") else 2048
@@ -183,9 +183,7 @@ def build_backbone_customized(args):
     train_backbone = args.lr_backbone > 0
     # return_interm_layers = args.masks
     return_interm_layers = True
-    backbone = Backbone(
-        args.backbone, train_backbone, return_interm_layers, args.dilation
-    )
+    backbone = Backbone("resnet50", train_backbone, return_interm_layers, False)
     model = Joiner(backbone, position_embedding)
     model.num_channels = backbone.num_channels
     return model

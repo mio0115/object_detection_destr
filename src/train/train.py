@@ -1,11 +1,21 @@
 import os
 import argparse
 
+import torch
+
 from ..model.model import build_model
 
 
 def train():
     pass
+
+
+def test(model):
+    t = torch.rand((2, 3, 224, 224))
+
+    output = model(t)
+
+    print(output)
 
 
 if __name__ == "__main__":
