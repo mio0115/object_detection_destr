@@ -2,21 +2,21 @@ import torch
 
 
 class NestedTensor(object):
-    def __init__(self, tensor: torch.Tensor, mask) -> None:
-        self.tensor = tensor
+    def __init__(self, tensors: torch.Tensor, mask: torch.Tensor) -> None:
+        self.tensors = tensors
         self.mask = mask
 
     def to(self, new_device: torch.device):
-        new_tensor = self.tensor.to(new_device)
+        new_tensors = self.tensors.to(new_device)
 
         new_mask = None
         if self.mask is not None:
             new_mask = self.mask.to(new_device)
 
-        return NestedTensor(new_tensor, new_mask)
+        return NestedTensor(new_tensors, new_mask)
 
     def decompose(self):
-        return self.tensor, self.mask
+        return self.tensors, self.mask
 
 
 def nested_tensor_from_tensor_list(tensor_list: list[torch.Tensor]):
@@ -36,7 +36,7 @@ def nested_tensor_from_tensor_list(tensor_list: list[torch.Tensor]):
     else:
         raise ValueError("not supported")
 
-    return NestedTensor(tensor=tensor, mask=mask)
+    return NestedTensor(tensors=tensor, mask=mask)
 
 
 def _max_by_axis(the_list):
@@ -48,3 +48,9 @@ def _max_by_axis(the_list):
             maxes[index] = max(maxes[index], item)
 
     return maxes
+
+
+def inverse_sigmoid(tensor, epsilon: float = 1e-7):
+    assert epsilon > 0, "epsilon must large than 0"
+
+    return -1 * (tensor.clip(min=epsilon).pow(-1) - 1).log()
