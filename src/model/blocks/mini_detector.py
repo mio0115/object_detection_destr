@@ -1,29 +1,27 @@
 import torch
-from torch.nn import Module, ModuleList, Conv2d, Linear, Sigmoid, ReLU, Sequential
+from torch import nn
 
 from ...utils.positional_embedding import gen_sineembed_for_position
 
 
-class MiniDetector(Module):
+class MiniDetector(nn.Module):
     def __init__(
         self,
-        input_shape: tuple[int, int],
-        reg_ffn,
-        cls_num: int,
+        reg_ffn: nn.Module,
+        class_embed: nn.Module,
+        bbox_embed: nn.Module,
         top_k: int,
-        position_index_2d: torch.Tensor,
+        # position_index_2d: torch.Tensor,
         hidden_dim: int = 256,
     ) -> None:
         super(MiniDetector, self).__init__()
 
-        self._input_shape = input_shape
         self._top_k = top_k
         self._hidden_dim = hidden_dim
-        self._pos_embed_2d = gen_sineembed_for_position(position_index_2d)
 
-        self._cls_conv = ModuleList(
+        self._cls_conv = nn.ModuleList(
             [
-                Conv2d(
+                nn.Conv2d(
                     in_channels=hidden_dim,
                     out_channels=hidden_dim,
                     kernel_size=(3, 3),
@@ -33,9 +31,9 @@ class MiniDetector(Module):
                 for _ in range(4)
             ]
         )
-        self._reg_conv = ModuleList(
+        self._reg_conv = nn.ModuleList(
             [
-                Conv2d(
+                nn.Conv2d(
                     in_channels=hidden_dim,
                     out_channels=hidden_dim,
                     kernel_size=(3, 3),
@@ -45,83 +43,101 @@ class MiniDetector(Module):
                 for _ in range(4)
             ]
         )
-        self._pos_conv = ModuleList(
-            [
-                Conv2d(
+        self._pos_conv = nn.ModuleList()
+        for _ in range(3):
+            self._pos_conv.append(
+                nn.Conv2d(
                     in_channels=hidden_dim,
                     out_channels=hidden_dim,
                     kernel_size=(3, 3),
                     stride=1,
                     padding="same",
-                ), 
-                ReLU() 
-                for _ in range(3)
-            ]
-        )
+                )
+            )
+            self._pos_conv.append(nn.ReLU())
 
-        self._cls_head = Sequential(
-            Linear(in_features=hidden_dim, out_features=cls_num), Sigmoid()
-        )
-        self._reg_head = reg_ffn
-        self._pos_head = Sequential(
-            Linear(in_features=hidden_dim, out_features=hidden_dim),
-            Linear(in_features=hidden_dim, out_features=2),     
-        )
-    
-    @property
-    def input_shape(self):
-        return self._input_shape
-    
-    @property
-    def input_height(self):
-        return self._input_shape[0]
-    
-    @property
-    def input_width(self):
-        return self._input_shape[1]
-    
-    @property
-    def sequence_length(self):
-        return self.input_height * self.input_width
-    
-    @property
-    def embedding_dim(self):
-        return self._hidden_dim
+        self._cls_embed = class_embed
+        self._pos_head = reg_ffn
+        self._bbox_embed = bbox_embed
 
-    def forward(self, inputs):
-        batch_size = inputs.size(0)
+    def remove_zero_padding(self, tensor, mask, height, width, padding_value=float(0)):
+        batch_size, sequence_len, channels = tensor.shape
+
+    def get_topk_index(self):
+        pass
+
+    def forward(self, inputs, pos_embed, mask):
+        batch_size, channels, height, width = inputs.shape
 
         cls_x = inputs
         for conv in self._cls_conv:
-            cls_x = conv(cls_x)
-        cls_x = cls_x.view(shape=(batch_size, self.sequence_length, self.embedding_dim))
+            cls_x = conv(cls_x)  # bs, ch, h, w
+        cls_x = cls_x.flatten(2).permute(0, 2, 1).contiguous()  # bs, h*w, ch
+        cls_x = self.remove_zero_padding(cls_x, mask=mask, height=height, width=width)
+
         cls_features = cls_x
-        cls_scores = self._cls_head(cls_x)
+        det_output_class = self._cls_embed(cls_x)
 
-        pos_query = self._pos_embed_2d.view(shape=(batch_size, self.input_height, self.input_width, self.input_shape[-1]))
+        pos_query = pos_embed
         for conv in self._pos_conv:
-            pos_features = conv(pos_query).view(shape=(batch_size, self.sequence_length, self.embedding_dim))
+            pos_query = conv(pos_query)
+        pos_query = pos_query.flatten(2).permute(0, 2, 1).contiguous()
+        pos_query = self.remove_zero_padding(
+            pos_query, mask=mask, height=height, width=width
+        )
 
-        pos_center_offset = self._pos_head(pos_features)
-        pos_center_offset = torch.concat([[pos_center_offset, torch.zeros(size=(batch_size, self.sequence_length, 2), dtype=torch.float32)]])
+        bbox_center_offset = self._pos_head(pos_query)
 
         reg_x = inputs
         for conv in self._reg_conv:
-            reg_x = conv(reg_x)
-        reg_x = reg_x.view(shape=(batch_size, self.sequence_length, self.embedding_dim))
+            reg_x = conv(reg_x)  # bs, channels, h, w
+        reg_x = reg_x.flatten(2).permute(0, 2, 1).contiguous()  # reg_x should be 4
+        reg_x = self.remove_zero_padding(reg_x, mask=mask, height=height, width=width)
+
         reg_features = reg_x
-        bbox_coord = self._reg_head(reg_x) + pos_center_offset
-        bbox_coord = Sigmoid()(bbox_coord)
+        bbox_coord = self._bbox_embed(reg_x)
+        bbox_coord[..., :2] += bbox_center_offset
+        det_output_coord = bbox_coord.sigmoid()
 
-        top_k = min(self._top_k, self.sequence_length)
+        det_output = {
+            "pred_class": torch.clone(det_output_class),
+            "pred_boxes": torch.clone(det_output_coord),
+        }
 
-        repr_cls_scores = torch.max(cls_scores, dim=-1)
-        _, top_k_indices = torch.topk(repr_cls_scores, k=top_k)
-        cls_output = torch.gather(cls_features, index=top_k_indices, dim=1)
-        reg_output = torch.gather(reg_features, index=top_k_indices, dim=1)
-        top_k_centers = torch.gather(bbox_coord, index=top_k_indices, dim=1)
+        object_features = torch.concat([cls_features, reg_features], dim=-1)
+        object_features = object_features.permute(1, 0, 2).contiguous()
 
-        top_k_proposals = torch.concat([cls_output, reg_output], dim=-1)
-        all_proposals = torch.concat([cls_scores, bbox_coord], dim=-1)
+        det_output_coord = self.remove_zero_padding(
+            det_output_coord, mask=mask, height=height, width=width
+        ).reshape(batch_size, height * width, 4)
+        det_output_class = self.remove_zero_padding(
+            det_output_class.sigmoid(), mask=mask, height=height, width=width
+        ).reshape(batch_size, height * width, -1)
 
-        return top_k_proposals, top_k_centers, all_proposals
+        valid_cand_per_img = mask.flatten(1).eq(0).sum(dim=-1, keepdim=False)[0].min()
+        avail_k = min(self._top_k, height * width, valid_cand_per_img)
+
+        idx = self.get_topk_index(
+            det_output_class,
+            k=avail_k,
+            padding_mask=mask.flatten(1),
+            training=self.training,
+        )
+
+        # TODO: check if the reshape is needed; use transpose instead of permute
+        selected_objects = (
+            object_features[idx]
+            .reshape(batch_size, avail_k, -1)
+            .permute(1, 0, 2)
+            .contiguous()
+            .detach()
+        )
+        selected_objects_center = (
+            det_output_coord[..., :2]
+            .transpose(0, 1)[idx]
+            .reshape(batch_size, avail_k, -1)
+            .permute(1, 0, 2)
+            .detach()
+        )
+
+        return selected_objects, selected_objects_center, det_output
