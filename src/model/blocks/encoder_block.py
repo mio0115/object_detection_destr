@@ -1,5 +1,5 @@
 import copy
-from types import Optional
+from typing import Optional
 
 import torch
 from torch import nn
@@ -20,7 +20,7 @@ class Encoder(nn.Module):
         self._pos_scale = nn.Sequential(
             nn.Linear(in_features=256, out_features=256),
             nn.ReLU(),
-            nn.Linear(in_features=256, out_features=2),
+            nn.Linear(in_features=256, out_features=256),
         )
         self.norm = nn.LayerNorm(256)
 
