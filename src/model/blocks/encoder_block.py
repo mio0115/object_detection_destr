@@ -50,9 +50,8 @@ class Encoder(nn.Module):
 class EncoderBlock(nn.Module):
     def __init__(
         self,
-        position_index_2d: torch.Tensor,
         d_model: int = 256,
-        input_shape: tuple[int, int] = (49, 256),
+        # input_shape: tuple[int, int] = (49, 256),
         heads_num: int = 8,
         d_k: int = 256,
         d_v: int = 256,
@@ -75,48 +74,45 @@ class EncoderBlock(nn.Module):
         self.norm1 = nn.LayerNorm(d_model)
         self.norm2 = nn.LayerNorm(d_model)
 
-        self._input_shape = input_shape
+        # self._input_shape = input_shape
         self._heads_num = heads_num
         self._hidden_dim = d_model
-        self._pos_embed_2d = gen_sineembed_for_position(
-            position_index_2d, d_model=d_model
-        )
         self._proj_to_q = nn.Linear(
-            in_features=self.embedding_dim, out_features=d_k, bias=False
+            in_features=self._hidden_dim, out_features=d_k, bias=False
         )
         self._proj_to_k = nn.Linear(
-            in_features=self.embedding_dim, out_features=d_k, bias=False
+            in_features=self._hidden_dim, out_features=d_k, bias=False
         )
         self._proj_to_v = nn.Linear(in_features=d_k, out_features=d_v, bias=False)
 
-    @property
-    def input_shape(self):
-        return self._input_shape
+    # @property
+    # def input_shape(self):
+    #    return self._input_shape
 
-    @property
-    def sequence_length(self):
-        return self._input_shape[0]
+    # @property
+    # def sequence_length(self):
+    #    return self._input_shape[0]
 
-    @property
-    def embedding_dim(self):
-        return self._input_shape[1]
+    # @property
+    # def embedding_dim(self):
+    #    return self._input_shape[1]
 
     @property
     def heads_num(self):
         return self._heads_num
 
-    def _split_heads(self, tensor: torch.Tensor):
-        batch_size, seq_len, hidden_dim = tensor.shape
-        tensor = tensor.view(
-            size=(
-                batch_size,
-                seq_len,
-                self.heads_num,
-                hidden_dim // self.heads_num,
-            )
-        ).transpose(1, 2)
+    # def _split_heads(self, tensor: torch.Tensor):
+    #    batch_size, seq_len, hidden_dim = tensor.shape
+    #    tensor = tensor.view(
+    #        size=(
+    #            batch_size,
+    #            seq_len,
+    #            self.heads_num,
+    #            hidden_dim // self.heads_num,
+    #        )
+    #    ).transpose(1, 2)
 
-        return tensor
+    #    return tensor
 
     def forward(
         self,
@@ -157,11 +153,9 @@ class EncoderBlock(nn.Module):
         return x
 
 
-def build_encoder(args, position_index_2d: torch.Tensor):
+def build_encoder(args):
     encoder = Encoder(
         encoder_block=EncoderBlock(
-            position_index_2d=position_index_2d,
-            input_shape=(49, args.hidden_dim),
             d_k=args.hidden_dim,
             d_v=args.hidden_dim,
         ),
