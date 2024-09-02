@@ -1,32 +1,47 @@
+import math
+from typing import Optional
+
 import torch
-from torch.nn import Module, Linear
+from torch import nn
 
 
-class SelfAttention(Module):
+class SelfAttention(torch.nn.Module):
     def __init__(
-        self,
-        input_shape: tuple[int, int, int],
-        output_shape: tuple[int, int, int],
-        heads_num: int = 8,
+        self, heads_num: int = 8, dropout_prob: float = 0.3, hidden_dim: int = 256
     ):
         super(SelfAttention, self).__init__()
 
-        self._heads_num = heads_num
-        # self._input_shape = input_shape
-        # self._output_shape = output_shape
+        self._num_heads = heads_num
+        self._dropout_prob = dropout_prob
+        self._hidden_dim = hidden_dim
 
-    def forward(self, query: torch.Tensor, key: torch.Tensor, value: torch.Tensor):
-        if self._heads_num > 1:
-            batch_size = query.size(dim=0)
-        else:
-            batch_size = query.size(dim=1)
+    def forward(
+        self,
+        query: torch.Tensor,
+        key: torch.Tensor,
+        value: torch.Tensor,
+        attn_mask: Optional[torch.Tensor] = None,
+        key_padding_mask: Optional[torch.Tensor] = None,
+    ):
+        attn_sc = torch.matmul(query, key.transpose(-1, -2)) / math.sqrt(query.size(-1))
 
-        attn_sc = torch.matmul(query, key.transpose(3, 2)) / torch.sqrt(query.size(-1))
+        if attn_mask is not None:
+            if attn_mask.dtype == torch.bool:
+                attn_sc = attn_sc.masked_fill(attn_mask, float("-inf"))
+            else:
+                attn_sc += attn_mask
+
+        if key_padding_mask is not None:
+            attn_sc = attn_sc.masked_fill(
+                key_padding_mask.bool().unsqueeze(1).unsqueeze(1), float("-inf")
+            )
+
         attn_sc = torch.softmax(input=attn_sc, dim=-1)
-        output = torch.matmul(attn_sc, value)
+        attn_sc = nn.Dropout(self._dropout_prob)(attn_sc)
+        output = torch.matmul(
+            attn_sc, value
+        )  # shape of output (batch_size, num_heads, num_objects, d_v)
 
-        output = output.transpose(1, 2).view(
-            batch_size, -1, self._heads_num * value.size(-1)
-        )
+        output = output.transpose(1, 2).flatten(2).contiguous()
 
         return output
