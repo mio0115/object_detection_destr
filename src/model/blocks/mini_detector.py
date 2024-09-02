@@ -3,8 +3,6 @@ from typing import Optional
 import torch
 from torch import nn
 
-from ...utils.positional_embedding import gen_sineembed_for_position
-
 
 class MiniDetector(nn.Module):
     def __init__(
@@ -13,7 +11,6 @@ class MiniDetector(nn.Module):
         class_embed: nn.Module,
         bbox_embed: nn.Module,
         top_k: int,
-        # position_index_2d: torch.Tensor,
         hidden_dim: int = 256,
     ) -> None:
         super(MiniDetector, self).__init__()
@@ -139,8 +136,9 @@ class MiniDetector(nn.Module):
             "pred_boxes": torch.clone(det_output_coord),
         }
 
-        object_features = torch.concat([cls_features, reg_features], dim=-1)
-        object_features = object_features.contiguous()
+        object_features = torch.concat(
+            [cls_features, reg_features], dim=-1
+        ).contiguous()
 
         det_output_coord = self.mask_invalid_features(
             det_output_coord, mask=mask
