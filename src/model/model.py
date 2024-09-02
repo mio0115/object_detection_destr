@@ -25,8 +25,8 @@ class ObjDetSplitTransformer(nn.Module):
         self._decoder = decoder
 
         self._hidden_dim = args.hidden_dim
-        self._cls_embed = (
-            nn.Linear(in_features=self._hidden_dim, out_features=args.num_cls),
+        self._cls_embed = nn.Linear(
+            in_features=self._hidden_dim, out_features=args.num_cls
         )
         self._bbox_embed = nn.Sequential(
             nn.Linear(in_features=self._hidden_dim, out_features=self._hidden_dim),
@@ -56,7 +56,7 @@ class ObjDetSplitTransformer(nn.Module):
         self._mini_detector = MiniDetector(
             top_k=args.top_k,
             reg_ffn=self._reg_ffn,
-            class_embed=self._class_embed,
+            class_embed=self._cls_embed,
             bbox_embed=self._bbox_embed,
         )
 
@@ -87,24 +87,22 @@ class ObjDetSplitTransformer(nn.Module):
         )
         fine_mask = mask
 
-        selected_objects, selected_objects_center, det_output = self._mini_detector(
-            x, fine_pos
+        selected_objects, selected_centers, det_output = self._mini_detector(
+            x, fine_pos, mask
         )
 
         selected_objects_pos_embed = gen_sineembed_for_position(
-            selected_objects_center, self._hidden_dim
+            selected_centers, self._hidden_dim
         )
-        selected_centers = selected_objects_center.transpose(0, 1)
-
-        x = selected_objects
 
         x, center_offset = self._decoder(
-            selected_objects,
-            encoder_output,
-            fine_mask,
-            selected_objects_pos_embed,
-            selected_centers,
-            self._mini_detector._bbox_embed,
+            selected_objects=selected_objects,
+            encoder_output=encoder_output.flatten(2).transpose(1, 2).contiguous(),
+            mask=fine_mask.flatten(1).contiguous(),
+            fine_pos=fine_pos.flatten(2).transpose(1, 2).contiguous(),
+            selected_objects_pos_embed=selected_objects_pos_embed,
+            selected_centers=selected_centers,
+            bbox_embed=self._bbox_embed,
         )
 
         cls_x, reg_x = torch.split(x, [self._hidden_dim, self._hidden_dim], dim=-1)
@@ -120,16 +118,9 @@ class ObjDetSplitTransformer(nn.Module):
 
 
 def build_model(args):
-    position_index_1d = torch.arange(start=0, end=7)
-    pos_idx1 = position_index_1d.unsqueeze(0).broadcast_to(7, 7)
-    pos_idx2 = position_index_1d.unsqueeze(1).broadcast_to(7, 7)
-    position_index_2d = torch.stack([pos_idx2, pos_idx1], dim=-1)
-
-    encoder = build_encoder(args=args, position_index_2d=position_index_2d)
-    # decoder = build_decoder(args=args, position_index_2d=position_index_2d)
+    encoder = build_encoder(args=args)
+    decoder = build_decoder(args=args)
     backbone = build_backbone_customized(args=args)
-
-    decoder = nn.Linear(10, 10)
 
     model = ObjDetSplitTransformer(
         args=args, backbone=backbone, encoder=encoder, decoder=decoder
