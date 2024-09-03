@@ -29,6 +29,7 @@ class MiniDetector(nn.Module):
                     padding="same",
                 )
             )
+            self._cls_conv.append(nn.BatchNorm2d(hidden_dim))
 
         self._reg_conv = nn.ModuleList()
         for _ in range(4):
@@ -41,6 +42,7 @@ class MiniDetector(nn.Module):
                     padding="same",
                 )
             )
+            self._cls_conv.append(nn.BatchNorm2d(hidden_dim))
 
         self._pos_conv = nn.ModuleList()
         for _ in range(4):
@@ -53,6 +55,7 @@ class MiniDetector(nn.Module):
                     padding="same",
                 )
             )
+            self._cls_conv.append(nn.BatchNorm2d(hidden_dim))
 
         self._cls_embed = class_embed
         self._pos_head = reg_ffn
