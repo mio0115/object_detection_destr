@@ -19,7 +19,7 @@ class ObjDetSplitTransformer(nn.Module):
     ):
         super(ObjDetSplitTransformer, self).__init__()
 
-        # we use resnet50 as feature extractor
+        # we use resnet50 as backbone
         self._backbone = backbone
         self._encoder = encoder
         self._decoder = decoder
@@ -95,7 +95,7 @@ class ObjDetSplitTransformer(nn.Module):
             selected_centers, self._hidden_dim
         )
 
-        x, center_offset = self._decoder(
+        x = self._decoder(
             selected_objects=selected_objects,
             encoder_output=encoder_output.flatten(2).transpose(1, 2).contiguous(),
             mask=fine_mask.flatten(1).contiguous(),
@@ -106,7 +106,7 @@ class ObjDetSplitTransformer(nn.Module):
         )
 
         cls_x, reg_x = torch.split(x, [self._hidden_dim, self._hidden_dim], dim=-1)
-        center_offset_before_sigmoid = inverse_sigmoid(center_offset)
+        center_offset_before_sigmoid = inverse_sigmoid(selected_centers)
 
         cls_output = self._cls_embed(cls_x)
 
