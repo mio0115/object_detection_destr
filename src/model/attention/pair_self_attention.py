@@ -1,4 +1,4 @@
-import pdb
+import math
 
 import torch
 from torch.nn import Module
@@ -7,19 +7,10 @@ from ...utils.bbox_utils import from_cxcyhw_to_xyxy
 
 
 class PairSelfAttention(Module):
-    def __init__(self, input_shape: tuple[int, int, int], heads_num: int) -> None:
+    def __init__(self, heads_num: int) -> None:
         super(PairSelfAttention, self).__init__()
 
-        self._input_shape = input_shape
         self._heads_num = heads_num
-
-    @property
-    def input_shape(self):
-        return self._input_shape
-
-    @property
-    def sequence_length(self):
-        return self._input_shape[0]
 
     @property
     def heads_num(self):
@@ -39,73 +30,76 @@ class PairSelfAttention(Module):
         2. Compute a2 score.
         3. Compute o2 score.
         """
-        batch_size = query.size(0)
+        batch_size, _, seq_len, d_model = query.shape
 
         """ The following block is to find indices of pairs based on their IoU. 
         Component a is paired up with Component a' if their IoU is larger than other components
         To compute A2, we need to pair up indices of (a, b) and (a', b')
         """
         pairs = _get_pairs(top_k_centers)
-        idx_pairs_l = (
-            torch.stack(
-                [
-                    pairs.unsqueeze(2)[..., 0].broadcast_to(
-                        size=(batch_size, self.sequence_length, self.sequence_length)
-                    ),
-                    pairs.unsqueeze(1)[..., 0].broadcast_to(
-                        size=(batch_size, self.sequence_length, self.sequence_length)
-                    ),
-                ],
-                dim=-1,
-            )
-            .unsqueeze(1)
-            .broadcast_to(
-                size=(
-                    batch_size,
-                    self.heads_num,
-                    self.sequence_length,
-                    self.sequence_length,
-                    2,
-                )
-            )
+
+        # flipped_mask
+        tmp = torch.arange(0, seq_len)[None, :, None].expand(batch_size, seq_len, 2)
+        flipped_mask = torch.where(pairs == tmp, False, True)
+
+        left_query = torch.stack(
+            tensors=[
+                b_query.index_select(dim=1, index=b_idx)
+                for b_query, b_idx in zip(query, pairs[..., 0])
+            ],
+            dim=0,
         )
-        idx_pairs_r = (
-            torch.stack(
-                [
-                    pairs.unsqueeze(2)[..., 1].broadcast_to(
-                        size=(batch_size, self.sequence_length, self.sequence_length)
-                    ),
-                    pairs.unsqueeze(1)[..., 1].broadcast_to(
-                        size=(batch_size, self.sequence_length, self.sequence_length)
-                    ),
-                ],
-                dim=-1,
-            )
-            .unsqueeze(1)
-            .broadcast_to(
-                size=(
-                    batch_size,
-                    self.heads_num,
-                    self.sequence_length,
-                    self.sequence_length,
-                    2,
-                )
-            )
+        left_key = torch.stack(
+            tensors=[
+                b_key.index_select(dim=1, index=b_idx)
+                for b_key, b_idx in zip(key, pairs[..., 0])
+            ],
+            dim=0,
         )
+        left_value = torch.stack(
+            tensors=[
+                b_val.index_select(dim=1, index=b_idx)
+                for b_val, b_idx in zip(value, pairs[..., 0])
+            ],
+            dim=0,
+        )
+
+        right_query = torch.stack(
+            tensors=[
+                b_query.index_select(dim=1, index=b_idx)
+                for b_query, b_idx in zip(query, pairs[..., 1])
+            ],
+            dim=0,
+        )
+        right_key = torch.stack(
+            tensors=[
+                b_key.index_select(dim=1, index=b_idx)
+                for b_key, b_idx in zip(key, pairs[..., 1])
+            ],
+            dim=0,
+        )
+        right_value = torch.stack(
+            tensors=[
+                b_val.index_select(dim=1, index=b_idx)
+                for b_val, b_idx in zip(value, pairs[..., 1])
+            ],
+            dim=0,
+        )
+        value = torch.concat([left_value, right_value], dim=-1)
 
         """ We compute A2(a, b) = <q_{pi a}, k_{pi b}> + <q_{pi a'}, k_{pi b'}> """
-        a2 = torch.matmul(query, key.transpose(3, 2))
+        a2_l = torch.matmul(left_query, left_key.transpose(2, 3))
+        a2_r = torch.matmul(right_query, right_key.transpose(2, 3))
 
-        a2_l = torch.gather(a2, index=idx_pairs_l, dim=-1)
-        a2_r = torch.gather(a2, index=idx_pairs_r, dim=-1)
+        a2 = a2_l + a2_r
 
-        a2 = torch.nn.functional.softmax(
-            (a2_l + a2_r) / torch.sqrt(2 * self.input_shape[-1])
-        )
+        a2 = a2.softmax(dim=-1) / math.sqrt(2 * d_model)
+        o2 = torch.matmul(a2, value).transpose(1, 2).flatten(2)
+
         o2 = (
-            torch.matmul(a2, value)
-            .transpose(1, 2)
-            .view(batch_size, self.sequence_length, -1)
+            o2.reshape(batch_size, seq_len, 2, d_model * self.heads_num)
+            .masked_fill(mask=flipped_mask.unsqueeze(-1), value=float(0))
+            .sum(2, keepdim=False)
         )
 
         return o2
@@ -116,8 +110,7 @@ def _get_pairs(top_k_centers: torch.Tensor):
     For each object query, we only take the pair which has the highest IoU.
     Then order the pair by their L1-distance decreasingly.
     """
-    batch_size = top_k_centers.size(dim=0)
-    num_objects = top_k_centers.size(dim=1)
+    batch_size, num_objects, *_ = top_k_centers.shape
 
     bbox_coord = from_cxcyhw_to_xyxy(top_k_centers)
 
@@ -125,8 +118,8 @@ def _get_pairs(top_k_centers: torch.Tensor):
     bbox_coord2 = bbox_coord.unsqueeze(dim=1)
 
     inter_mins = torch.maximum(bbox_coord1[..., :2], bbox_coord2[..., :2])
-    inter_maxs = torch.maximum(bbox_coord1[..., 2:], bbox_coord2[..., 2:])
-    inter_wh = torch.clip(inter_maxs - inter_mins, min=0)
+    inter_maxs = torch.minimum(bbox_coord1[..., 2:], bbox_coord2[..., 2:])
+    inter_wh = inter_maxs - inter_mins
 
     inter_area = torch.mul(inter_wh[..., 0], inter_wh[..., 1])
 
