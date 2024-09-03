@@ -11,11 +11,11 @@ def train():
 
 
 def test(model):
-    t = torch.rand((2, 3, 224, 224))
+    t = torch.rand((2, 3, 720, 1280))
 
-    output = model(t)
+    cls_output, bbox_output, det_output = model(t)
 
-    print(output)
+    breakpoint()
 
 
 if __name__ == "__main__":
@@ -81,3 +81,5 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
     model = build_model(args=args)
+
+    test(model)
