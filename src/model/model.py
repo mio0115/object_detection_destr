@@ -114,7 +114,9 @@ class ObjDetSplitTransformer(nn.Module):
         tmp[..., :2] += center_offset_before_sigmoid
         bbox_output = tmp.sigmoid()
 
-        return cls_output, bbox_output, det_output
+        model_output = {"pred_class": cls_output, "pred_boxes": bbox_output}
+
+        return model_output, det_output
 
 
 def build_model(args):
