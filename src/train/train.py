@@ -6,6 +6,9 @@ import torchvision as tv
 
 from ..model.model import build_model
 from ..utils.transforms import TransformTypes, build_transform
+from ..utils.matcher import build_matcher
+from ..utils.criterion import SetCriterion
+from ..utils.bbox_utils import complete_iou
 
 
 def train(
@@ -118,6 +121,27 @@ if __name__ == "__main__":
         dest="path_to_dataset",
         help="Path to dataset",
     )
+    parser.add_argument(
+        "--set_cost_class",
+        default=0.2,
+        type=float,
+        dest="set_cost_class",
+        help="Weight of class lost",
+    )
+    parser.add_argument(
+        "--set_cost_bbox",
+        default=0.5,
+        type=float,
+        dest="set_cost_bbox",
+        help="Weight of bbox lost",
+    )
+    parser.add_argument(
+        "--set_cost_ciou",
+        default=0.2,
+        type=float,
+        dest="set_cost_ciou",
+        help="Weight of ciou lost",
+    )
 
     # model config
     parser.add_argument(
@@ -172,6 +196,22 @@ if __name__ == "__main__":
             {"params": other_params},
         ],
         lr=args.lr,
+    )
+
+    matcher = build_matcher(args)
+    criterion = SetCriterion(
+        num_classes=args.num_cls,
+        matcher=matcher,
+        loss_weight={
+            "class": args.set_cost_class,
+            "bbox": args.set_cost_bbox,
+            "ciou": args.set_cost_ciou,
+        },
+        loss_fn={
+            "class": torch.nn.CrossEntropyLoss(),
+            "bbox": torch.nn.L1Loss(),
+            "ciou": complete_iou,
+        },
     )
 
     cwd = os.getcwd()
