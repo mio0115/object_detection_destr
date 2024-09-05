@@ -58,6 +58,37 @@ def from_xyxy_to_cxcyhw(bbox_coord: torch.Tensor) -> torch.Tensor:
     return new_bbox_coord
 
 
+def from_xyhw_to_xyxy(bbox_coord: torch.Tensor) -> torch.Tensor:
+    """
+    Transform the bbox coordinates
+    from (min_x, min_y, height, width)
+    to
+    (min_x, min_y, max_x, max_y)
+
+    Args:
+        bbox_coord: Coordinates of boundary box. (xyhw)
+
+    Returns:
+        torch.Tensor: Coordinates of the boundary box. (xyxy)
+    """
+
+    new_bbox_coord = torch.concat(
+        [
+            bbox_coord[..., :2],
+            torch.stack(
+                [
+                    bbox_coord[..., 0] + bbox_coord[..., 3],
+                    bbox_coord[..., 1] + bbox_coord[..., 2],
+                ],
+                dim=-1,
+            ),
+        ],
+        dim=-1,
+    )
+
+    return new_bbox_coord
+
+
 def complete_iou(pred_xyxy: torch.Tensor, gt_xyxy: torch.Tensor):
     pred_cxcyhw = from_xyxy_to_cxcyhw(pred_xyxy)
     gt_cxcyhw = from_xyxy_to_cxcyhw(gt_xyxy)
