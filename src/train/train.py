@@ -2,13 +2,13 @@ import os
 import argparse
 
 import torch
-import torch.utils
-import torch.utils.data
+import torchvision as tv
 
 from ..model.model import build_model
+from ..utils.transforms import TransformTypes, build_transform
 
 
-def train_process(
+def train(
     args,
     model: torch.nn.Module,
     loss_fn,
@@ -111,6 +111,13 @@ if __name__ == "__main__":
         dest="epochs",
         help="Number of training epochs",
     )
+    parser.add_argument(
+        "--path_to_dataset",
+        type=str,
+        default="/workspace/dataset",
+        dest="path_to_dataset",
+        help="Path to dataset",
+    )
 
     # model config
     parser.add_argument(
@@ -152,8 +159,40 @@ if __name__ == "__main__":
         dest="hidden_dim",
         help="The hidden dimension in the model",
     )
-
     args = parser.parse_args()
+
     model = build_model(args=args)
 
-    test(model)
+    other_params = [
+        param for name, param in model.named_parameters() if "backbone" not in name
+    ]
+    optim = torch.optim.Adam(
+        [
+            {"params": model._backbone.parameters(), "lr": args.lr_backbone},
+            {"params": other_params},
+        ],
+        lr=args.lr,
+    )
+
+    cwd = os.getcwd()
+    train_ds = tv.datasets.wrap_dataset_for_transforms_v2(
+        tv.datasets.WIDERFace(
+            root=os.path.join(cwd, "dataset"),
+            split=TransformTypes.TRAIN.value,
+            transform=build_transform(trans_type=TransformTypes.TRAIN),
+        ),
+        target_keys=["bbox"],
+    )
+    valid_ds = tv.datasets.wrap_dataset_for_transforms_v2(
+        tv.datasets.WIDERFace(
+            root=os.path.join(cwd, "dataset"),
+            split=TransformTypes.VALID.value,
+            transform=build_transform(trans_type=TransformTypes.VALID),
+        ),
+        target_keys=["bbox"],
+    )
+
+    train_dl = torch.utils.data.DataLoader(dataset=train_ds, batch_size=4, shuffle=True)
+    valid_dl = torch.utils.data.DataLoader(dataset=valid_ds, batch_size=4, shuffle=True)
+
+    train(model=model, optimizer=optim, train_loader=train_dl, valid_loader=valid_dl)
