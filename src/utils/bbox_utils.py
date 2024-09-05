@@ -58,10 +58,10 @@ def from_xyxy_to_cxcyhw(bbox_coord: torch.Tensor) -> torch.Tensor:
     return new_bbox_coord
 
 
-def from_xyhw_to_xyxy(bbox_coord: torch.Tensor) -> torch.Tensor:
+def from_xywh_to_xyxy(bbox_coord: torch.Tensor) -> torch.Tensor:
     """
     Transform the bbox coordinates
-    from (min_x, min_y, height, width)
+    from (min_x, min_y, width, height)
     to
     (min_x, min_y, max_x, max_y)
 
@@ -77,8 +77,8 @@ def from_xyhw_to_xyxy(bbox_coord: torch.Tensor) -> torch.Tensor:
             bbox_coord[..., :2],
             torch.stack(
                 [
-                    bbox_coord[..., 0] + bbox_coord[..., 3],
-                    bbox_coord[..., 1] + bbox_coord[..., 2],
+                    bbox_coord[..., 0] + bbox_coord[..., 2],
+                    bbox_coord[..., 1] + bbox_coord[..., 3],
                 ],
                 dim=-1,
             ),
