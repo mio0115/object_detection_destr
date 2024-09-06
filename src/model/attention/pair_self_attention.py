@@ -105,7 +105,7 @@ class PairSelfAttention(Module):
         return o2
 
 
-def _get_pairs(top_k_centers: torch.Tensor):
+def _get_pairs(top_k_centers: torch.Tensor, epsilon: float = 1e-6):
     """According to DESTR, pair self-attention has better performance than self-attention.
     For each object query, we only take the pair which has the highest IoU.
     Then order the pair by their L1-distance decreasingly.
@@ -129,9 +129,11 @@ def _get_pairs(top_k_centers: torch.Tensor):
     bbox_area1 = bbox_area.unsqueeze(dim=-1)
     bbox_area2 = bbox_area.unsqueeze(dim=-2)
 
-    bbox_union_area = bbox_area1 + bbox_area2 - inter_area
+    union_area = bbox_area1 + bbox_area2 - inter_area
     # the IoU between two same objects is 1, we do not want that kind of pairs
-    bbox_iou = inter_area / bbox_union_area - torch.eye(n=inter_area.size(dim=-1))
+    bbox_iou = inter_area / (union_area + epsilon) - torch.eye(
+        n=inter_area.size(dim=-1)
+    )
 
     # turn the indices from [[0, 2, 1]] to [[[0, 0], [1, 2], [2, 1]]]
     pair_idx = torch.stack(
