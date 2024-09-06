@@ -89,7 +89,7 @@ def from_xywh_to_xyxy(bbox_coord: torch.Tensor) -> torch.Tensor:
     return new_bbox_coord
 
 
-def complete_iou(pred_xyxy: torch.Tensor, gt_xyxy: torch.Tensor):
+def complete_iou(pred_xyxy: torch.Tensor, gt_xyxy: torch.Tensor, epsilon=1e-6):
     pred_cxcyhw = from_xyxy_to_cxcyhw(pred_xyxy)
     gt_cxcyhw = from_xyxy_to_cxcyhw(gt_xyxy)
 
@@ -110,7 +110,7 @@ def complete_iou(pred_xyxy: torch.Tensor, gt_xyxy: torch.Tensor):
     # compute V and alpha
     v = (
         4
-        / pow(math.pi, 2)
+        / pow(torch.pi, 2)
         * torch.pow(
             torch.atan(gt_cxcyhw[..., 3] / gt_cxcyhw[..., 2])[None, :]
             - torch.atan(pred_cxcyhw[..., 3] / pred_cxcyhw[..., 2])[:, None],
@@ -120,12 +120,13 @@ def complete_iou(pred_xyxy: torch.Tensor, gt_xyxy: torch.Tensor):
     alpha = torch.where(iou < 0.5, 0, v / (1 - iou + v))
 
     # if v.isnan().any() or alpha.isnan().any() or (center_dist == 0).any():
-    #    breakpoint()
+    ciou = (1 - iou) + center_dist.pow(2) / (diag_len + epsilon).pow(2) + alpha * v
+    # breakpoint()
 
-    return (1 - iou) + diag_len / center_dist + alpha * v
+    return ciou
 
 
-def get_iou(bbox1, bbox2):
+def get_iou(bbox1, bbox2, epsilon=1e-6):
 
     # breakpoint()
 
@@ -137,9 +138,9 @@ def get_iou(bbox1, bbox2):
     bbox1_area = (bbox1[..., 2] - bbox1[..., 0]) * (bbox1[..., 3] - bbox1[..., 1])
     bbox2_area = (bbox2[..., 2] - bbox2[..., 0]) * (bbox2[..., 3] - bbox2[..., 1])
 
-    bbox_area_sum = bbox1_area[:, None] + bbox2_area[None, :]
+    union_area = bbox1_area[:, None] + bbox2_area[None, :] - inter_area
 
-    iou = bbox_area_sum / inter_area
+    iou = inter_area / (union_area + epsilon)
 
     return iou
 
@@ -159,3 +160,10 @@ def filter_flat_box(boxes, epsilon=1e-6):
     # breakpoint()
 
     return filtered_boxes
+
+
+if __name__ == "__main__":
+    bbox1 = torch.Tensor([[10, 50, 50, 100]])
+    bbox2 = torch.Tensor([[20, 100, 100, 200]])
+
+    complete_iou(bbox1, bbox2)
