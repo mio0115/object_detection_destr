@@ -4,7 +4,7 @@ from torch import nn
 from .bbox_utils import complete_iou
 
 
-class SetCriterion(nn.Moduel):
+class SetCriterion(nn.Module):
     def __init__(self, num_classes, matcher, loss_weight, loss_fn):
         super(SetCriterion, self).__init__()
 
@@ -13,45 +13,32 @@ class SetCriterion(nn.Moduel):
         self._loss_weights = loss_weight
         self._loss_fns = loss_fn
 
-    def _reduce_dict(self, losses):
+    def _reduce_dict(self, losses, batch_size):
         total_loss = 0
 
-        for key, weight in self._loss_weights.item():
+        for key, weight in self._loss_weights.items():
             total_loss += weight * losses.get(key, 0).sum(-1)
 
-        return total_loss
+        return total_loss / batch_size
 
     def forward(self, outputs, targets):
-        losses = {}
+        losses = {"class": 0, "bbox": 0, "ciou": 0}
 
         indices = self._matcher(outputs, targets)
 
-        # In order to compute loss, we reorder the targets
-        gt_bboxes = torch.stack(
-            [
-                b_tgt.index_select(index=b_idx, dim=0)
-                for b_idx, b_tgt in zip(indices, targets[0])
-            ],
-            dim=0,
-        )
-        gt_class = torch.stack(
-            [
-                b_tgt.index_select(index=b_idx, dim=0)
-                for b_idx, b_tgt in zip(indices, targets[1])
-            ],
-            dim=0,
-        )
+        for b_output_cls, b_output_box, b_targets, b_idx in zip(
+            outputs["pred_class"], outputs["pred_boxes"], targets, indices
+        ):
+            output_pred_class = b_output_cls.index_select(index=b_idx[0], dim=0)
+            output_pred_boxes = b_output_box.index_select(index=b_idx[0], dim=0)
+            gt_class = b_targets["labels"].index_select(index=b_idx[1], dim=0)
+            gt_boxes = b_targets["boxes"].index_select(index=b_idx[1], dim=0)
 
-        # loss of class
-        losses["class"] = self._loss_fns["class"](outputs["pred_class"], gt_class)
+            losses["class"] += self._loss_fns["class"](output_pred_class, gt_class)
+            losses["bbox"] += self._loss_fns["bbox"](output_pred_boxes, gt_boxes)
+            losses["ciou"] += self._loss_fns["ciou"](output_pred_boxes, gt_boxes)
 
-        # loss of boundary box
-        losses["bbox"] = self._loss_fns["bbox"](outputs["pred_bbox"], gt_bboxes)
-
-        # loss of complete IoU
-        losses["ciou"] = self._loss_fns["ciou"](outputs["pred_bbox"], gt_bboxes)
-
-        return self._reduce_dict(losses)
+        return self._reduce_dict(losses, len(indices))
 
 
 class CompleteIOULoss(nn.Module):
