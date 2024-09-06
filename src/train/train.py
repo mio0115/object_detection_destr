@@ -5,24 +5,24 @@ import torch
 import torchvision as tv
 
 from ..model.model import build_model
-from ..utils.transforms import TransformTypes, build_transform
+from ..dataset.transforms import TransformTypes, build_transform
+from ..dataset.dataset import WiderFace, widerface_collate_fn
 from ..utils.matcher import build_matcher
-from ..utils.criterion import SetCriterion
-from ..utils.bbox_utils import complete_iou
+from ..utils.criterion import SetCriterion, CompleteIOULoss
 
 
 def train(
     args,
     model: torch.nn.Module,
-    loss_fn,
-    optimizer: torch.optim.optimizer,
+    criterion,
+    optimizer: torch.optim.Optimizer,
     train_loader: torch.utils.data.DataLoader,
     valid_loader: torch.utils.data.DataLoader,
 ):
     for idx in range(args.epochs):
         model.train(True)
         loss_model, loss_det = train_one_epoch(
-            model, loss_fn, optimizer=optimizer, dataloader=train_loader
+            model, criterion, optimizer=optimizer, dataloader=train_loader
         )
 
         running_vloss = {"model": 0.0, "det": 0.0}
@@ -30,11 +30,11 @@ def train(
 
         with torch.no_grad():
             for vdata in valid_loader:
-                vinputs, vlabels = vdata
+                vinputs, vtargets = vdata
 
                 voutputs_model, voutputs_det = model(vinputs)
-                vloss_model = loss_fn(voutputs_model, vlabels)
-                vloss_det = loss_fn(voutputs_det, vlabels)
+                vloss_model = criterion(voutputs_model, vtargets)
+                vloss_det = criterion(voutputs_det, vtargets)
 
                 running_vloss["model"] += vloss_model
                 running_vloss["det"] += vloss_det
@@ -49,29 +49,29 @@ def train(
 
 def train_one_epoch(
     model,
-    loss_fn,
-    optimizer: torch.optim.optimizer,
+    criterion,
+    optimizer: torch.optim.Optimizer,
     dataloader: torch.utils.data.DataLoader,
 ):
     running_loss_det = 0.0
     running_loss_model = 0.0
 
     for data in dataloader:
-        inputs, labels = data
+        inputs, targets = data
 
         optimizer.zero_grad()
         model_outputs, det_outputs = model(inputs)
 
-        loss_model = loss_fn(model_outputs, labels)
-        loss_det = loss_fn(det_outputs, labels)
+        losses_model = criterion(model_outputs, targets)
+        losses_det = criterion(det_outputs, targets)
 
-        loss_model.backward()
-        loss_det.backward()
+        total_loss = losses_model + losses_det
 
+        total_loss.backward()
         optimizer.step()
 
-        running_loss_model += loss_model.item()
-        running_loss_det += loss_det.item()
+        running_loss_model += losses_model.item()
+        running_loss_det += losses_det.item()
 
     train_loss_model = running_loss_model / len(dataloader)
     train_loss_det = running_loss_det / len(dataloader)
@@ -79,12 +79,11 @@ def train_one_epoch(
     return train_loss_model, train_loss_det
 
 
-def test(model):
+def test_model(model):
+    """Test if the model is available"""
     t = torch.rand((2, 3, 720, 1280))
 
-    cls_output, bbox_output, det_output = model(t)
-
-    breakpoint()
+    model(t)
 
 
 if __name__ == "__main__":
@@ -141,6 +140,14 @@ if __name__ == "__main__":
         type=float,
         dest="set_cost_ciou",
         help="Weight of ciou lost",
+    )
+    parser.add_argument(
+        "-bs",
+        "--batch_size",
+        default=4,
+        type=int,
+        dest="batch_size",
+        help="Number of samples in batch",
     )
 
     # model config
@@ -210,29 +217,42 @@ if __name__ == "__main__":
         loss_fn={
             "class": torch.nn.CrossEntropyLoss(),
             "bbox": torch.nn.L1Loss(),
-            "ciou": complete_iou,
+            "ciou": CompleteIOULoss(),
         },
     )
 
-    cwd = os.getcwd()
-    train_ds = tv.datasets.wrap_dataset_for_transforms_v2(
-        tv.datasets.WIDERFace(
-            root=os.path.join(cwd, "dataset"),
-            split=TransformTypes.TRAIN.value,
-            transform=build_transform(trans_type=TransformTypes.TRAIN),
-        ),
-        target_keys=["bbox"],
+    path_to_dataset = os.path.join(os.getcwd(), "dataset")
+    train_ds = WiderFace(
+        root=path_to_dataset,
+        split=TransformTypes.TRAIN,
+        transform=build_transform(trans_type=TransformTypes.TRAIN),
+        augment_factor=5,
     )
-    valid_ds = tv.datasets.wrap_dataset_for_transforms_v2(
-        tv.datasets.WIDERFace(
-            root=os.path.join(cwd, "dataset"),
-            split=TransformTypes.VALID.value,
-            transform=build_transform(trans_type=TransformTypes.VALID),
-        ),
-        target_keys=["bbox"],
+    valid_ds = WiderFace(
+        root=path_to_dataset,
+        split=TransformTypes.VALID,
+        transform=build_transform(trans_type=TransformTypes.VALID),
+        augment_factor=1,
     )
 
-    train_dl = torch.utils.data.DataLoader(dataset=train_ds, batch_size=4, shuffle=True)
-    valid_dl = torch.utils.data.DataLoader(dataset=valid_ds, batch_size=4, shuffle=True)
+    train_dl = torch.utils.data.DataLoader(
+        dataset=train_ds,
+        batch_size=args.batch_size,
+        shuffle=True,
+        collate_fn=widerface_collate_fn,
+    )
+    valid_dl = torch.utils.data.DataLoader(
+        dataset=valid_ds,
+        batch_size=args.batch_size,
+        shuffle=True,
+        collate_fn=widerface_collate_fn,
+    )
 
-    train(model=model, optimizer=optim, train_loader=train_dl, valid_loader=valid_dl)
+    train(
+        args,
+        model=model,
+        criterion=criterion,
+        optimizer=optim,
+        train_loader=train_dl,
+        valid_loader=valid_dl,
+    )
