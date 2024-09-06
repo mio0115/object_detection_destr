@@ -71,15 +71,10 @@ class HungarianMatcher(nn.Module):
         out_bbox = outputs["pred_boxes"].flatten(0, 1)  # [batch_size * num_queries, 4]
 
         # Also concat the target labels and boxes
-        # tgt_ids = torch.cat([v["labels"] for v in targets])
 
         # turn one-hot encoding labels to normal labels
         tgt_ids = torch.cat([tgt["labels"] for tgt in targets]).argmax(-1)
-        # tgt_ids = targets["labels"].argmax(-1).flatten()
         tgt_bbox = torch.cat([tgt["boxes"] for tgt in targets])
-        # tgt_bbox = targets["boxes"].flatten(0, 1)
-
-        # breakpoint()
 
         # Compute the classification cost.
         alpha = 0.25
@@ -93,8 +88,6 @@ class HungarianMatcher(nn.Module):
         # Compute the L1 cost between boxes
         cost_bbox = torch.cdist(out_bbox, tgt_bbox, p=1)
 
-        # breakpoint()
-
         # Compute the ciou cost betwen boxes
         cost_ciou = complete_iou(from_cxcyhw_to_xyxy(out_bbox), tgt_bbox)
 
@@ -105,9 +98,6 @@ class HungarianMatcher(nn.Module):
             + self.cost_ciou * cost_ciou
         )
         C = C.view(bs, num_queries, -1).cpu()
-
-        # if C.isnan().any():
-        #   breakpoint()
 
         sizes = [len(tgt["boxes"]) for tgt in targets]
         indices = [
