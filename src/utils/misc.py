@@ -54,3 +54,21 @@ def inverse_sigmoid(tensor, epsilon: float = 1e-7):
     assert epsilon > 0, "epsilon must large than 0"
 
     return -1 * (tensor.clip(min=epsilon).pow(-1) - 1).log()
+
+
+def to_device(inputs, device):
+    if isinstance(inputs, (torch.Tensor, torch.nn.Module)):
+        new_inputs = inputs.to(device=device)
+    elif isinstance(inputs, (tuple, list)):
+        new_inputs = [to_device(inp, device=device) for inp in inputs]
+    elif isinstance(inputs, dict):
+        new_inputs = {}
+
+        for key, item in inputs.items():
+            new_inputs[key] = to_device(item, device=device)
+    else:
+        raise ValueError(
+            f"inputs should be one of following types: torch.Tensor, tuple, list or dict. But got {type(inputs)}"
+        )
+
+    return new_inputs

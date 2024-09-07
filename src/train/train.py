@@ -2,11 +2,11 @@ import os
 import argparse
 
 import torch
-import torchvision as tv
 
 from ..model.model import build_model
 from ..dataset.transforms import TransformTypes, build_transform
 from ..dataset.dataset import WiderFace, widerface_collate_fn
+from ..utils.misc import to_device
 from ..utils.matcher import build_matcher
 from ..utils.criterion import SetCriterion, CompleteIOULoss
 
@@ -19,7 +19,7 @@ def train(
     train_loader: torch.utils.data.DataLoader,
     valid_loader: torch.utils.data.DataLoader,
 ):
-    model = model.to(args.device)
+    model = to_device(model, args.device)
 
     lowest_vloss = 10000
     for idx in range(args.epochs):
@@ -33,7 +33,7 @@ def train(
 
         with torch.no_grad():
             for vdata in valid_loader:
-                vinputs, vtargets = vdata
+                vinputs, vtargets = to_device(vdata, args.device)
 
                 voutputs_model, voutputs_det = model(vinputs)
                 vloss_model = criterion(voutputs_model, vtargets)
@@ -72,7 +72,7 @@ def train_one_epoch(
     running_loss_model = 0.0
 
     for data in dataloader:
-        inputs, targets = data.to(args.device)
+        inputs, targets = to_device(data, args.device)
 
         optimizer.zero_grad()
         model_outputs, det_outputs = model(inputs)
