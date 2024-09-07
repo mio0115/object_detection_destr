@@ -1,3 +1,5 @@
+import os
+
 import torch
 from torch import nn
 
@@ -127,5 +129,12 @@ def build_model(args):
     model = ObjDetSplitTransformer(
         args=args, backbone=backbone, encoder=encoder, decoder=decoder
     )
+    if args.resume:
+        model.load_state_dict(
+            torch.load(
+                os.path.join("/workspace", "checkpoints", args.model_weight_name),
+                weights_only=True,
+            )
+        )
 
     return model
