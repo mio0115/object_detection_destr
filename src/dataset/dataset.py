@@ -49,20 +49,13 @@ class WiderFace(tv.datasets.WIDERFace):
 
         new_bboxes = filter_flat_box(new_bboxes, epsilon=1e-4)
 
-        # breakpoint()
-
         new_bboxes = new_bboxes[: self._max_items_per_image]
+
+        # normalize
+        new_bboxes[:, 0::2] /= new_img.size(2)  # width
+        new_bboxes[:, 1::2] /= new_img.size(1)  # height
+
         new_labels = torch.Tensor([[1.0, 0.0]]).expand(size=(new_bboxes.size(0), 2))
-
-        # pads = self._items_per_image - new_bboxes.size(0)
-        # new_bboxes = torch.concat(
-        #    [new_bboxes, torch.full(size=(pads, 4), fill_value=-1)], dim=0
-        # )
-        # new_labels = torch.concat(
-        #    [new_labels, torch.Tensor([[0.0, 1.0]]).expand(size=(pads, 2))], dim=0
-        # )
-
-        # breakpoint()
 
         return new_img, {"boxes": new_bboxes, "labels": new_labels}
 
@@ -71,8 +64,5 @@ def widerface_collate_fn(batch):
     img, targets = zip(*batch)
 
     img = torch.stack(img)
-
-    # boxes = torch.stack([tgt["boxes"] for tgt in targets])
-    # labels = torch.stack([tgt["labels"] for tgt in targets])
 
     return img, targets
