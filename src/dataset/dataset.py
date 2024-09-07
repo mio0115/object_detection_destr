@@ -47,7 +47,7 @@ class WiderFace(tv.datasets.WIDERFace):
         )
         new_img, new_bboxes = self._transforms(img, bboxes)
 
-        new_bboxes = filter_flat_box(new_bboxes, epsilon=1e-4)
+        new_bboxes = filter_flat_box(new_bboxes, epsilon=1e-5)
 
         new_bboxes = new_bboxes[: self._max_items_per_image]
 
