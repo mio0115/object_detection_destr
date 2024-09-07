@@ -65,7 +65,7 @@ fi
 
 echo "Start Docker container..."
 
-docker run --rm -t \
+docker run --rm -it \
         --name ${CONTAINER_NAME} \
         -v ${PATH_TO_PROJECT}/dataset:${WORKDIR}/dataset \
         -v ${PATH_TO_PROJECT}/checkpoints:${WORKDIR}/checkpoints \
