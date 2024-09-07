@@ -67,8 +67,8 @@ echo "Start Docker container..."
 
 docker run --rm -it \
         --name ${CONTAINER_NAME} \
-        -v ${PATH_TO_PROJECT}/dataset:${WORKDIR}/dataset \
-        -v ${PATH_TO_PROJECT}/checkpoints:${WORKDIR}/checkpoints \
+        -v $(pwd)/dataset:${WORKDIR}/dataset \
+        -v $(pwd)/checkpoints:${WORKDIR}/checkpoints \
         --gpus all \
         ${IMAGE_NAME}:${IMAGE_TAG} \
         python -m src.train.train \
