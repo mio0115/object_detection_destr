@@ -19,10 +19,13 @@ def train(
     train_loader: torch.utils.data.DataLoader,
     valid_loader: torch.utils.data.DataLoader,
 ):
+    model = model.to(args.device)
+
+    lowest_vloss = 10000
     for idx in range(args.epochs):
-        model.train(True)
+        model.train()
         loss_model, loss_det = train_one_epoch(
-            model, criterion, optimizer=optimizer, dataloader=train_loader
+            args, model, criterion, optimizer=optimizer, dataloader=train_loader
         )
 
         running_vloss = {"model": 0.0, "det": 0.0}
@@ -39,15 +42,27 @@ def train(
                 running_vloss["model"] += vloss_model
                 running_vloss["det"] += vloss_det
 
-            vloss_model = running_vloss["model"] / len(valid_loader)
-            vloss_det = running_vloss["det"] / len(valid_loader)
+            vloss_model = running_vloss["model"] / len(valid_loader.dataset)
+            vloss_det = running_vloss["det"] / len(valid_loader.dataset)
+
+        vloss = vloss_model * 0.7 + vloss_det * 0.3
+        if vloss < lowest_vloss:
+            torch.save(
+                model.state_dict(),
+                os.path.join("/", "workspace", "chceckpoints", args.save_as),
+            )
 
         print(
-            f"Epoch {idx+1:>2}: \n\t Train loss model: {loss_model:.4f} detetector: {loss_det:.4f}\n\t Valid loss model: {vloss_model:.4f} detector: {loss_det:.4f}"
+            f"""Epoch {idx+1:>2}: \n\t 
+                Train Loss \n\t\t 
+                    model: {loss_model:.4f} detector: {loss_det:.4f}\n\t 
+                Valid Loss \n\t\t 
+                    model: {vloss_model:.4f} detector: {loss_det:.4f}"""
         )
 
 
 def train_one_epoch(
+    args,
     model,
     criterion,
     optimizer: torch.optim.Optimizer,
@@ -57,7 +72,7 @@ def train_one_epoch(
     running_loss_model = 0.0
 
     for data in dataloader:
-        inputs, targets = data
+        inputs, targets = data.to(args.device)
 
         optimizer.zero_grad()
         model_outputs, det_outputs = model(inputs)
@@ -73,8 +88,8 @@ def train_one_epoch(
         running_loss_model += losses_model.item()
         running_loss_det += losses_det.item()
 
-    train_loss_model = running_loss_model / len(dataloader)
-    train_loss_det = running_loss_det / len(dataloader)
+    train_loss_model = running_loss_model / len(dataloader.dataset)
+    train_loss_det = running_loss_det / len(dataloader.dataset)
 
     return train_loss_model, train_loss_det
 
@@ -114,13 +129,6 @@ if __name__ == "__main__":
         help="Number of training epochs",
     )
     parser.add_argument(
-        "--path_to_dataset",
-        type=str,
-        default="/workspace/dataset",
-        dest="path_to_dataset",
-        help="Path to dataset",
-    )
-    parser.add_argument(
         "--set_cost_class",
         default=0.2,
         type=float,
@@ -148,6 +156,29 @@ if __name__ == "__main__":
         type=int,
         dest="batch_size",
         help="Number of samples in batch",
+    )
+    parser.add_argument(
+        "--augment_factor",
+        default=5,
+        type=int,
+        dest="augment_factor",
+        help="New size of dataset after data augmentation",
+    )
+    parser.add_argument("--resume", action="store_true", help="Resume from checkpoint")
+    parser.add_argument(
+        "--model_weight_name",
+        default="model_weights.pth",
+        type=str,
+        help="Name of model weights to restore",
+    )
+    parser.add_argument(
+        "--device", default="cuda", dest="device", help="Device to use for training"
+    )
+    parser.add_argument(
+        "--save_as",
+        default="model_weights.pth",
+        type=str,
+        help="Name of model weights to save",
     )
 
     # model config
