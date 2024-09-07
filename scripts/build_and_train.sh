@@ -4,6 +4,7 @@ IMAGE_NAME="project/face_det_torch"
 IMAGE_TAG="train"
 CONTAINER_NAME="face_det_container"
 PATH_TO_PROJECT="/home/daniel/cv_project/face_detection_torch"
+WORKDIR="/workspace"
 
 LEARNING_RATE=1e-5
 LEARNING_RATE_BACKBONE=1e-5
@@ -66,11 +67,11 @@ echo "Start Docker container..."
 
 docker run --rm -t \
         --name ${CONTAINER_NAME} \
-        -v ${PATH_TO_PROJECT}/dataset:${PATH_TO_DATA} \
-        -v ${PATH_TO_PROJECT}/checkpoints:${PATH_TO_CKPT} \
+        -v ${PATH_TO_PROJECT}/dataset:${WORKDIR}/dataset \
+        -v ${PATH_TO_PROJECT}/checkpoints:${WORKDIR}/checkpoints \
         --gpus all \
         ${IMAGE_NAME}:${IMAGE_TAG} \
-        python -m src.train \
+        python -m src.train.train \
             --learning_rate=${LEARNING_RATE} \
             --lr_backbone=${LEARNING_RATE_BACKBONE} \
             --augment_factor=${AUGMENT_FACTOR} \
