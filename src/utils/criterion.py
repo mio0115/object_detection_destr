@@ -1,7 +1,7 @@
-import torch
 from torch import nn
 
 from .bbox_utils import complete_iou
+from ..utils.misc import to_device
 
 
 class SetCriterion(nn.Module):
@@ -24,7 +24,9 @@ class SetCriterion(nn.Module):
     def forward(self, outputs, targets):
         losses = {"class": 0, "bbox": 0, "ciou": 0}
 
-        indices = self._matcher(outputs, targets)
+        indices = to_device(
+            self._matcher(outputs, targets), device=outputs["pred_class"].device
+        )
 
         for b_output_cls, b_output_box, b_targets, b_idx in zip(
             outputs["pred_class"], outputs["pred_boxes"], targets, indices
