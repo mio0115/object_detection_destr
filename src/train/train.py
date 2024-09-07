@@ -39,13 +39,16 @@ def train(
                 vloss_model = criterion(voutputs_model, vtargets)
                 vloss_det = criterion(voutputs_det, vtargets)
 
-                running_vloss["model"] += vloss_model
-                running_vloss["det"] += vloss_det
+                running_vloss["model"] += vloss_model.item()
+                running_vloss["det"] += vloss_det.item()
+
+                break
 
             vloss_model = running_vloss["model"] / len(valid_loader.dataset)
             vloss_det = running_vloss["det"] / len(valid_loader.dataset)
 
         vloss = vloss_model * 0.7 + vloss_det * 0.3
+
         if vloss < lowest_vloss:
             torch.save(
                 model.state_dict(),
@@ -87,6 +90,9 @@ def train_one_epoch(
 
         running_loss_model += losses_model.item()
         running_loss_det += losses_det.item()
+
+        if losses_model.isnan().any() or losses_det.isnan().any():
+            breakpoint()
 
     train_loss_model = running_loss_model / len(dataloader.dataset)
     train_loss_det = running_loss_det / len(dataloader.dataset)
@@ -250,7 +256,7 @@ if __name__ == "__main__":
             "bbox": torch.nn.L1Loss(),
             "ciou": CompleteIOULoss(),
         },
-    )
+    ).to(args.device)
 
     path_to_dataset = os.path.join(os.getcwd(), "dataset")
     train_ds = WiderFace(
