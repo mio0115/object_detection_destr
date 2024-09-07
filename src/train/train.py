@@ -246,7 +246,7 @@ if __name__ == "__main__":
             "ciou": args.set_cost_ciou,
         },
         loss_fn={
-            "class": torch.nn.CrossEntropyLoss(),
+            "class": torch.nn.BCEWithLogitsLoss(),
             "bbox": torch.nn.L1Loss(),
             "ciou": CompleteIOULoss(),
         },
