@@ -65,6 +65,11 @@ def train(
                     writer.add_scalar("Loss/valid/model", avg_vloss_model, g_vstep)
                     writer.add_scalar("Loss/valid/det", avg_vloss_det, g_vstep)
 
+                    prefix_vloss_det, prefix_vloss_model = (
+                        running_vloss_det,
+                        running_vloss_model,
+                    )
+
             vloss_model = running_vloss_model / len(valid_loader.dataset)
             vloss_det = running_vloss_det / len(valid_loader.dataset)
 
@@ -124,6 +129,8 @@ def train_one_epoch(
 
             writer.add_scalar("Loss/train/model", avg_loss_model, g_step)
             writer.add_scalar("Loss/train/det", avg_loss_det, g_step)
+
+            prefix_loss_det, prefix_loss_model = running_loss_det, running_loss_model
 
     train_loss_model = running_loss_model / len(dataloader.dataset)
     train_loss_det = running_loss_det / len(dataloader.dataset)
