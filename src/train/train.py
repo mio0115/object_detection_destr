@@ -3,6 +3,7 @@ import argparse
 import time
 
 import torch
+from torch.utils.tensorboard import SummaryWriter
 
 from ..model.model import build_model
 from ..dataset.transforms import TransformTypes, build_transform
@@ -20,16 +21,25 @@ def train(
     train_loader: torch.utils.data.DataLoader,
     valid_loader: torch.utils.data.DataLoader,
 ):
+    writer = SummaryWriter()
+
     model = to_device(model, args.device)
 
-    lowest_vloss = 10000
+    lowest_vloss, g_step, g_vstep, log_interval = 10000, 0, 0, 100
     for idx in range(args.epochs):
         model.train()
-        loss_model, loss_det, duration = train_one_epoch(
-            args, model, criterion, optimizer=optimizer, dataloader=train_loader
+        loss_model, loss_det, duration, g_step = train_one_epoch(
+            args,
+            model,
+            criterion,
+            optimizer=optimizer,
+            dataloader=train_loader,
+            writer=writer,
+            g_step=g_step,
         )
 
         running_vloss_model, running_vloss_det = 0.0, 0.0
+        prefix_vloss_model, prefix_vloss_det = 0, 0
         model.eval()
 
         with torch.no_grad():
@@ -42,6 +52,18 @@ def train(
 
                 running_vloss_model += vloss_model.item()
                 running_vloss_det += vloss_det.item()
+
+                g_vstep += 1
+                if g_vstep % log_interval == 0:
+                    avg_vloss_model = (
+                        running_vloss_model - prefix_vloss_model
+                    ) / log_interval
+                    avg_vloss_det = (
+                        running_vloss_det - prefix_vloss_det
+                    ) / log_interval
+
+                    writer.add_scalar("Loss/valid/model", avg_vloss_model, g_vstep)
+                    writer.add_scalar("Loss/valid/det", avg_vloss_det, g_vstep)
 
             vloss_model = running_vloss_model / len(valid_loader.dataset)
             vloss_det = running_vloss_det / len(valid_loader.dataset)
@@ -68,11 +90,14 @@ def train_one_epoch(
     args,
     model,
     criterion,
+    writer,
+    g_step,
     optimizer: torch.optim.Optimizer,
     dataloader: torch.utils.data.DataLoader,
 ):
-    running_loss_det = 0.0
-    running_loss_model = 0.0
+    running_loss_det, running_loss_model = 0.0, 0.0
+    log_interval = 100
+    prefix_loss_model, prefix_loss_det = 0, 0
     start_time = time.time()
 
     for data in dataloader:
@@ -92,11 +117,19 @@ def train_one_epoch(
         running_loss_model += losses_model.item()
         running_loss_det += losses_det.item()
 
+        g_step += 1
+        if g_step % log_interval == 0:
+            avg_loss_model = (running_loss_model - prefix_loss_model) / log_interval
+            avg_loss_det = (running_loss_det - prefix_loss_det) / log_interval
+
+            writer.add_scalar("Loss/train/model", avg_loss_model, g_step)
+            writer.add_scalar("Loss/train/det", avg_loss_det, g_step)
+
     train_loss_model = running_loss_model / len(dataloader.dataset)
     train_loss_det = running_loss_det / len(dataloader.dataset)
     end_time = time.time()
 
-    return train_loss_model, train_loss_det, end_time - start_time
+    return train_loss_model, train_loss_det, end_time - start_time, g_step
 
 
 def test_model(model):
@@ -233,7 +266,7 @@ if __name__ == "__main__":
     other_params = [
         param for name, param in model.named_parameters() if "backbone" not in name
     ]
-    optim = torch.optim.Adam(
+    optim = torch.optim.AdamW(
         [
             {"params": model._backbone.parameters(), "lr": args.lr_backbone},
             {"params": other_params},
