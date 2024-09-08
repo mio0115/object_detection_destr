@@ -28,7 +28,7 @@ def train(
             args, model, criterion, optimizer=optimizer, dataloader=train_loader
         )
 
-        running_vloss = {"model": 0.0, "det": 0.0}
+        running_vloss_model, running_vloss_det = 0.0, 0.0
         model.eval()
 
         with torch.no_grad():
@@ -39,13 +39,13 @@ def train(
                 vloss_model = criterion(voutputs_model, vtargets)
                 vloss_det = criterion(voutputs_det, vtargets)
 
-                running_vloss["model"] += vloss_model.item()
-                running_vloss["det"] += vloss_det.item()
+                running_vloss_model += vloss_model.item()
+                running_vloss_det += vloss_det.item()
 
                 break
 
-            vloss_model = running_vloss["model"] / len(valid_loader.dataset)
-            vloss_det = running_vloss["det"] / len(valid_loader.dataset)
+            vloss_model = running_vloss_model / len(valid_loader.dataset)
+            vloss_det = running_vloss_det / len(valid_loader.dataset)
 
         vloss = vloss_model * 0.7 + vloss_det * 0.3
 
@@ -83,16 +83,13 @@ def train_one_epoch(
         losses_model = criterion(model_outputs, targets)
         losses_det = criterion(det_outputs, targets)
 
-        total_loss = losses_model + losses_det
+        total_loss = losses_model * 0.7 + losses_det * 0.3
 
         total_loss.backward()
         optimizer.step()
 
         running_loss_model += losses_model.item()
         running_loss_det += losses_det.item()
-
-        if losses_model.isnan().any() or losses_det.isnan().any():
-            breakpoint()
 
     train_loss_model = running_loss_model / len(dataloader.dataset)
     train_loss_det = running_loss_det / len(dataloader.dataset)
