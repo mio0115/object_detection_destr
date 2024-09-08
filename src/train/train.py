@@ -1,5 +1,6 @@
 import os
 import argparse
+import time
 
 import torch
 
@@ -24,7 +25,7 @@ def train(
     lowest_vloss = 10000
     for idx in range(args.epochs):
         model.train()
-        loss_model, loss_det = train_one_epoch(
+        loss_model, loss_det, duration = train_one_epoch(
             args, model, criterion, optimizer=optimizer, dataloader=train_loader
         )
 
@@ -42,8 +43,6 @@ def train(
                 running_vloss_model += vloss_model.item()
                 running_vloss_det += vloss_det.item()
 
-                break
-
             vloss_model = running_vloss_model / len(valid_loader.dataset)
             vloss_det = running_vloss_det / len(valid_loader.dataset)
 
@@ -52,11 +51,12 @@ def train(
         if vloss < lowest_vloss:
             torch.save(
                 model.state_dict(),
-                os.path.join("/", "workspace", "chceckpoints", args.save_as),
+                os.path.join("/", "workspace", "checkpoints", args.save_as),
             )
 
         print(
             f"""Epoch {idx+1:>2}: \n\t 
+                Duration: {duration/60:.4f} minutes \n\t
                 Train Loss \n\t\t 
                     model: {loss_model:.4f} detector: {loss_det:.4f}\n\t 
                 Valid Loss \n\t\t 
@@ -73,6 +73,7 @@ def train_one_epoch(
 ):
     running_loss_det = 0.0
     running_loss_model = 0.0
+    start_time = time.time()
 
     for data in dataloader:
         inputs, targets = to_device(data, args.device)
@@ -93,8 +94,9 @@ def train_one_epoch(
 
     train_loss_model = running_loss_model / len(dataloader.dataset)
     train_loss_det = running_loss_det / len(dataloader.dataset)
+    end_time = time.time()
 
-    return train_loss_model, train_loss_det
+    return train_loss_model, train_loss_det, end_time - start_time
 
 
 def test_model(model):
