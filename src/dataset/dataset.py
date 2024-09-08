@@ -55,7 +55,7 @@ class WiderFace(tv.datasets.WIDERFace):
         new_bboxes[:, 0::2] /= new_img.size(2)  # width
         new_bboxes[:, 1::2] /= new_img.size(1)  # height
 
-        new_labels = torch.Tensor([[1.0, 0.0]]).expand(size=(new_bboxes.size(0), 2))
+        new_labels = torch.tensor([[1.0, 0.0]]).expand(size=(new_bboxes.size(0), 2))
 
         return new_img, {"boxes": new_bboxes, "labels": new_labels}
 
