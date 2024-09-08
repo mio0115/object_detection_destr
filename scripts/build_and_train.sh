@@ -69,6 +69,7 @@ docker run --rm -it \
         --name ${CONTAINER_NAME} \
         -v $(pwd)/dataset:${WORKDIR}/dataset \
         -v $(pwd)/checkpoints:${WORKDIR}/checkpoints \
+        -v $(pwd)/runs:${WORKDIR}/runs \
         --gpus all \
         ${IMAGE_NAME}:${IMAGE_TAG} \
         python -m src.train.train \
