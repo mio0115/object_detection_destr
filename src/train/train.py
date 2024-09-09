@@ -75,11 +75,12 @@ def train(
 
         vloss = vloss_model * 0.7 + vloss_det * 0.3
 
-        if vloss < lowest_vloss:
+        if vloss_model < lowest_vloss:
             torch.save(
                 model.state_dict(),
                 os.path.join("/", "workspace", "checkpoints", args.save_as),
             )
+            lowest_vloss = vloss_model
 
         print(
             f"""Epoch {idx+1:>2}: \n\t 
@@ -89,6 +90,7 @@ def train(
                 Valid Loss \n\t\t 
                     model: {vloss_model:.4f} detector: {loss_det:.4f}"""
         )
+        writer.close()
 
 
 def train_one_epoch(
