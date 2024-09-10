@@ -50,17 +50,17 @@ def train(
                 vloss_model = criterion(voutputs_model, vtargets)
                 vloss_det = criterion(voutputs_det, vtargets)
 
-                running_vloss_model += vloss_model.item()
-                running_vloss_det += vloss_det.item()
+                running_vloss_model += vloss_model.item() * vinputs.size(0)
+                running_vloss_det += vloss_det.item() * vinputs.size(0)
 
                 g_vstep += 1
                 if g_vstep % log_interval == 0:
-                    avg_vloss_model = (
-                        running_vloss_model - prefix_vloss_model
-                    ) / log_interval
-                    avg_vloss_det = (
-                        running_vloss_det - prefix_vloss_det
-                    ) / log_interval
+                    avg_vloss_model = (running_vloss_model - prefix_vloss_model) / (
+                        log_interval * args.batch_size
+                    )
+                    avg_vloss_det = (running_vloss_det - prefix_vloss_det) / (
+                        log_interval * args.batch_size
+                    )
 
                     writer.add_scalar("Loss/valid/model", avg_vloss_model, g_vstep)
                     writer.add_scalar("Loss/valid/det", avg_vloss_det, g_vstep)
@@ -121,13 +121,17 @@ def train_one_epoch(
         total_loss.backward()
         optimizer.step()
 
-        running_loss_model += losses_model.item()
-        running_loss_det += losses_det.item()
+        running_loss_model += losses_model.item() * inputs.size(0)
+        running_loss_det += losses_det.item() * inputs.size(0)
 
         g_step += 1
         if g_step % log_interval == 0:
-            avg_loss_model = (running_loss_model - prefix_loss_model) / log_interval
-            avg_loss_det = (running_loss_det - prefix_loss_det) / log_interval
+            avg_loss_model = (running_loss_model - prefix_loss_model) / (
+                log_interval * args.batch_size
+            )
+            avg_loss_det = (running_loss_det - prefix_loss_det) / (
+                log_interval * args.batch_size
+            )
 
             writer.add_scalar("Loss/train/model", avg_loss_model, g_step)
             writer.add_scalar("Loss/train/det", avg_loss_det, g_step)
