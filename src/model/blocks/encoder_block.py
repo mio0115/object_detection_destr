@@ -32,11 +32,12 @@ class Encoder(nn.Module):
 
         for enc_blk in self._encoder:
             scale = self._pos_scale(x)
-            x = enc_blk(
+            tmp_x = enc_blk(
                 x,
                 key_mask=mask,
                 pos_embed=pos_embed * scale,
             )
+            x = x + tmp_x
 
         x = self.norm(x)
         x = x.permute(1, 2, 0).view(batch_size, channels, height, width)

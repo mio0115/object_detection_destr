@@ -52,7 +52,7 @@ class Decoder(nn.Module):
 
             selected_objects_coords = tmp_bbox.sigmoid()
 
-            x = dec_blk(
+            tmp_x = dec_blk(
                 x,
                 encoder_output,
                 enc_pos_embed=fine_pos,
@@ -61,6 +61,7 @@ class Decoder(nn.Module):
                 obj_pos_embed=selected_objects_pos_embed,
                 obj_sin_embed=selected_objects_sin_embed,
             )
+            x = x + tmp_x
 
         return x
 
