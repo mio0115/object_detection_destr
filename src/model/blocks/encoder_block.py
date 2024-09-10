@@ -37,9 +37,8 @@ class Encoder(nn.Module):
                 key_mask=mask,
                 pos_embed=pos_embed * scale,
             )
-            x = x + tmp_x
+            x = self.norm(x + tmp_x)
 
-        x = self.norm(x)
         x = x.permute(1, 2, 0).view(batch_size, channels, height, width)
 
         return x

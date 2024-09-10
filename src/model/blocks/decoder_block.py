@@ -23,6 +23,7 @@ class Decoder(nn.Module):
             nn.ReLU(),
             nn.Linear(in_features=256, out_features=256),
         )
+        self.norm = nn.LayerNorm(512)
 
     def forward(
         self,
@@ -61,7 +62,7 @@ class Decoder(nn.Module):
                 obj_pos_embed=selected_objects_pos_embed,
                 obj_sin_embed=selected_objects_sin_embed,
             )
-            x = x + tmp_x
+            x = self.norm(x + tmp_x)
 
         return x
 
