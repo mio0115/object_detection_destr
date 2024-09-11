@@ -10,13 +10,14 @@ from ..dataset.transforms import TransformTypes, build_transform
 from ..dataset.dataset import WiderFace, widerface_collate_fn
 from ..utils.misc import to_device
 from ..utils.matcher import build_matcher
-from ..utils.criterion import SetCriterion, CompleteIOULoss
+from ..utils.criterion import SetCriterion, CompleteIOULoss, MeanAveragePrecision
 
 
 def train(
     args,
     model: torch.nn.Module,
     criterion,
+    metric,
     optimizer: torch.optim.Optimizer,
     train_loader: torch.utils.data.DataLoader,
     valid_loader: torch.utils.data.DataLoader,
@@ -47,6 +48,7 @@ def train(
                 vinputs, vtargets = to_device(vdata, args.device)
 
                 voutputs_model, voutputs_det = model(vinputs)
+                metric(voutputs_model, vtargets)
                 vloss_model = criterion(voutputs_model, vtargets)
                 vloss_det = criterion(voutputs_det, vtargets)
 
@@ -70,8 +72,10 @@ def train(
                         running_vloss_model,
                     )
 
+            writer.add_scalar("Metric/mAP", metric.compute(), idx)
             vloss_model = running_vloss_model / len(valid_loader.dataset)
             vloss_det = running_vloss_det / len(valid_loader.dataset)
+            metric.reset()
 
         vloss = vloss_model * 0.7 + vloss_det * 0.3
 
@@ -302,6 +306,7 @@ if __name__ == "__main__":
             "ciou": CompleteIOULoss(),
         },
     ).to(args.device)
+    metric = MeanAveragePrecision().to("cpu")
 
     path_to_dataset = os.path.join(os.getcwd(), "dataset")
     train_ds = WiderFace(
@@ -334,6 +339,7 @@ if __name__ == "__main__":
         args,
         model=model,
         criterion=criterion,
+        metric=metric,
         optimizer=optim,
         train_loader=train_dl,
         valid_loader=valid_dl,

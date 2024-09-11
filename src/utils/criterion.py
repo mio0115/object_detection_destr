@@ -1,8 +1,9 @@
 import torch
 from torch import nn
+import numpy as np
 
-from .bbox_utils import complete_iou
-from ..utils.misc import to_device
+from .bbox_utils import complete_iou, get_iou, from_cxcyhw_to_xyxy
+from ..utils.misc import to_device, np_softmax
 
 
 class SetCriterion(nn.Module):
@@ -77,3 +78,119 @@ class CompleteIOULoss(nn.Module):
         ciou = complete_iou(outputs, gt)
 
         return ciou.mean()
+
+
+class MeanAveragePrecision(nn.Module):
+    # consider the case IoU >= 0.5 first
+
+    def __init__(self, num_cls: int = 1, threshold: float = 0.5, num_pred: int = 300):
+        super(MeanAveragePrecision, self).__init__()
+
+        self._num_cls = num_cls
+        self._num_gts = 0
+        self._num_pred = num_pred
+        self._true_positives = np.zeros(num_pred)
+        self._false_positives = np.zeros(num_pred)
+        self._threshold = threshold
+
+    def _compute_precision_recall(self):
+        cumsum_tp = np.cumsum(self._true_positives)
+        cumsum_fp = np.cumsum(self._false_positives)
+
+        # num_gt = true positives + false negatives eq. every ground truth
+        recall = cumsum_tp / self._num_gts
+        precision = cumsum_tp / (cumsum_tp + cumsum_fp)
+
+        return precision, recall
+
+    def _compute_ap(self, precision, recall):
+        ap = 0.0
+
+        for t in np.arange(0.0, 1.1, 0.1):
+            if np.sum(recall >= t) == 0:
+                p = 0
+            else:
+                p = np.max(precision[recall >= t])
+            ap += p / 11.0
+
+        return ap
+
+    def reset(self):
+        self._num_gts = 0
+        self._true_positives = np.zeros(self._num_pred)
+        self._false_positives = np.zeros(self._num_pred)
+
+    @torch.no_grad()
+    def compute(self):
+        p, r = self._compute_precision_recall()
+
+        # TODO: upgrade to multi-class
+        ap = self._compute_ap(precision=p, recall=r)
+
+        return ap
+
+    @torch.no_grad()
+    def forward(self, outputs, targets):
+        outputs, targets = to_device(outputs, "cpu"), to_device(targets, "cpu")
+
+        for cls_ in range(self._num_cls):
+
+            for b_pr_logits, b_pr_boxes, b_gt in zip(
+                outputs["pred_class"].numpy(), outputs["pred_boxes"].numpy(), targets
+            ):
+                # breakpoint()
+                b_gt_class, b_gt_boxes = b_gt["labels"].numpy(), b_gt["boxes"].numpy()
+                b_pr_boxes = from_cxcyhw_to_xyxy(bbox_coord=b_pr_boxes).numpy()
+
+                b_pr_prob = np_softmax(b_pr_logits, -1)
+                b_pr_class = b_pr_prob.argmax(-1)
+
+                cls_pr_idx = np.where(b_pr_class == cls_)[0]
+                cls_gt_idx = np.where(b_gt_class == cls_)[0]
+
+                if len(cls_gt_idx) == 0:
+                    continue
+
+                cls_pr_boxes = b_pr_boxes[cls_pr_idx]
+                cls_pr_prob = b_pr_prob[cls_pr_idx]
+                cls_gt_boxes = b_gt_boxes[cls_gt_idx]
+
+                sorted_idx = np.argsort(-cls_pr_prob, axis=0)[:, cls_]
+                cls_pr_boxes = cls_pr_boxes[sorted_idx]
+                cls_pr_prob = cls_pr_prob[sorted_idx]
+
+                num_gt = len(cls_gt_boxes)
+                self._num_gts += num_gt
+
+                matched_gt_boxes = np.zeros(num_gt)
+
+                ious = get_iou(bbox1=cls_pr_boxes, bbox2=cls_gt_boxes).numpy()
+
+                for i, iou in enumerate(ious):
+                    best_iou_idx = np.argmax(iou)
+                    best_iou = iou[best_iou_idx]
+
+                    if (
+                        best_iou >= self._threshold
+                        and matched_gt_boxes[best_iou_idx] == 0
+                    ):
+                        self._true_positives[i] += 1
+                        matched_gt_boxes[best_iou_idx] = 1
+                    else:
+                        self._false_positives[i] += 1
+
+
+if __name__ == "__main__":
+    map_compute = MeanAveragePrecision()
+
+    outputs = {
+        "pred_class": torch.rand((2, 10, 2)),
+        "pred_boxes": torch.rand((2, 10, 4)),
+    }
+    targets = (
+        {"labels": torch.zeros(4), "boxes": torch.rand(4, 4)},
+        {"labels": torch.zeros(8), "boxes": torch.rand(8, 4)},
+    )
+
+    val = map_compute(outputs, targets)
+    print(val)

@@ -1,4 +1,5 @@
 import torch
+import numpy as np
 
 
 class NestedTensor(object):
@@ -72,3 +73,10 @@ def to_device(inputs, device):
         )
 
     return new_inputs
+
+
+def np_softmax(x, axis=-1):
+    y = np.exp(x - np.max(x, axis=axis, keepdims=True))
+    f_x = y / np.sum(y, axis=axis, keepdims=True)
+
+    return f_x
