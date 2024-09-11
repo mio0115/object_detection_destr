@@ -1,8 +1,26 @@
 import math
 
 import torch
+import numpy as np
 
 
+def from_np_to_tensor(func):
+    def helper(*args, **kwargs):
+        if "bbox1" in kwargs.keys() and isinstance(kwargs["bbox1"], np.ndarray):
+            kwargs["bbox1"] = torch.from_numpy(kwargs["bbox1"])
+        if "bbox2" in kwargs.keys() and isinstance(kwargs["bbox2"], np.ndarray):
+            kwargs["bbox2"] = torch.from_numpy(kwargs["bbox2"])
+        if "bbox_coord" in kwargs.keys() and isinstance(
+            kwargs["bbox_coord"], np.ndarray
+        ):
+            kwargs["bbox_coord"] = torch.from_numpy(kwargs["bbox_coord"])
+
+        return func(*args, **kwargs)
+
+    return helper
+
+
+@from_np_to_tensor
 def from_cxcyhw_to_xyxy(bbox_coord: torch.Tensor) -> torch.Tensor:
     """
     Transform the bbox coordinates
@@ -31,6 +49,7 @@ def from_cxcyhw_to_xyxy(bbox_coord: torch.Tensor) -> torch.Tensor:
     return new_bbox_coord
 
 
+@from_np_to_tensor
 def from_xyxy_to_cxcyhw(bbox_coord: torch.Tensor) -> torch.Tensor:
     """
     Transform the bbox coordinates
@@ -58,6 +77,7 @@ def from_xyxy_to_cxcyhw(bbox_coord: torch.Tensor) -> torch.Tensor:
     return new_bbox_coord
 
 
+@from_np_to_tensor
 def from_xywh_to_xyxy(bbox_coord: torch.Tensor) -> torch.Tensor:
     """
     Transform the bbox coordinates
@@ -126,6 +146,7 @@ def complete_iou(pred_xyxy: torch.Tensor, gt_xyxy: torch.Tensor, epsilon=1e-6):
     return ciou
 
 
+@from_np_to_tensor
 def get_iou(bbox1, bbox2, epsilon=1e-6):
 
     # breakpoint()
