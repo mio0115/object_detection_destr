@@ -133,8 +133,8 @@ class MeanAveragePrecision(nn.Module):
             for b_pr_logits, b_pr_boxes, b_gt in zip(
                 outputs["pred_class"].numpy(), outputs["pred_boxes"].numpy(), targets
             ):
-                # breakpoint()
-                b_gt_class, b_gt_boxes = b_gt["labels"].numpy(), b_gt["boxes"].numpy()
+                b_gt_class = nn.functional.one_hot(b_gt['labels'], num_classes=self._num_cls+1).numpy()
+                b_gt_boxes = b_gt["boxes"].numpy()
                 b_pr_boxes = from_cxcyhw_to_xyxy(bbox_coord=b_pr_boxes).numpy()
 
                 b_pr_prob = np_softmax(b_pr_logits, -1)
