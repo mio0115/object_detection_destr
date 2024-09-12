@@ -41,7 +41,7 @@ class HungarianMatcher(nn.Module):
         self.cost_bbox = cost_bbox
         self.cost_ciou = cost_ciou
         assert (
-            cost_class != 0 or cost_bbox != 0 or cost_ciou != 0
+            self.cost_class != 0 or self.cost_bbox != 0 or self.cost_ciou != 0
         ), "all costs cant be 0"
 
     @torch.no_grad()
@@ -128,7 +128,7 @@ class HungarianMatcherWoL1(nn.Module):
         super().__init__()
         self.cost_class = cost_class
         self.cost_ciou = cost_ciou
-        assert cost_class != 0 or cost_ciou != 0, "all costs cant be 0"
+        assert self.cost_class != 0 or self.cost_ciou != 0, "all costs cant be 0"
 
     @torch.no_grad()
     def forward(self, outputs, targets):
@@ -191,9 +191,5 @@ class HungarianMatcherWoL1(nn.Module):
         ]
 
 
-def build_matcher(args):
-    return HungarianMatcher(
-        cost_class=args.set_cost_class,
-        cost_bbox=args.set_cost_bbox,
-        cost_ciou=args.set_cost_ciou,
-    )
+def build_matcher(matcher_cls):
+    return matcher_cls()

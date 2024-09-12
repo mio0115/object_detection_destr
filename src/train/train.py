@@ -9,7 +9,7 @@ from ..model.model import build_model
 from ..dataset.transforms import TransformTypes, build_transform
 from ..dataset.dataset import WiderFace, widerface_collate_fn
 from ..utils.misc import to_device
-from ..utils.matcher import build_matcher
+from ..utils.matcher import build_matcher, HungarianMatcherWoL1
 from ..utils.criterion import SetCriterion, CompleteIOULoss, MeanAveragePrecision
 
 
@@ -291,7 +291,7 @@ if __name__ == "__main__":
         lr=args.lr,
     )
 
-    matcher = build_matcher(args)
+    matcher = build_matcher(HungarianMatcherWoL1)
     criterion = SetCriterion(
         num_classes=args.num_cls,
         matcher=matcher,
