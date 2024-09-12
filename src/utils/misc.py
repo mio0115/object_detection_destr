@@ -74,6 +74,13 @@ def to_device(inputs, device):
 
     return new_inputs
 
+def reduce_dict(dict_, weights, default_weight: float = 1.0):
+    sum_ = 0
+    
+    for key, val in dict_.items():
+        sum_ += val * weights.get(key, default_weight)
+    
+    return sum_
 
 def np_softmax(x, axis=-1):
     y = np.exp(x - np.max(x, axis=axis, keepdims=True))

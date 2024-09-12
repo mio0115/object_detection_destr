@@ -7,21 +7,12 @@ from ..utils.misc import to_device, np_softmax
 
 
 class SetCriterion(nn.Module):
-    def __init__(self, num_classes, matcher, loss_weight, loss_fn):
+    def __init__(self, num_classes, matcher, loss_fn):
         super(SetCriterion, self).__init__()
 
         self._num_cls = num_classes
         self._matcher = matcher
-        self._loss_weights = loss_weight
         self._loss_fns = loss_fn
-
-    def _reduce_dict(self, losses, batch_size):
-        total_loss = 0
-
-        for key, weight in self._loss_weights.items():
-            total_loss += weight * losses.get(key, 0).sum(-1)
-
-        return total_loss / batch_size
 
     def _get_ciou_loss(self, pred_boxes, gt_boxes):
         return self._loss_fns["ciou"](pred_boxes, gt_boxes)
@@ -67,7 +58,10 @@ class SetCriterion(nn.Module):
                 losses["bbox"] += self._get_bbox_loss(output_pred_boxes, gt_boxes)
                 losses["ciou"] += self._get_ciou_loss(output_pred_boxes, gt_boxes)
 
-        return self._reduce_dict(losses, len(indices))
+        # average the batch
+        for key, val in losses.items():
+            losses[key] = val / len(indices)
+        return losses
 
 
 class CompleteIOULoss(nn.Module):
