@@ -47,7 +47,7 @@ class WiderFace(tv.datasets.WIDERFace):
         )
         new_img, new_bboxes = self._transforms(img, bboxes)
 
-        new_bboxes = filter_flat_box(new_bboxes, epsilon=1e-5)
+        new_bboxes = filter_flat_box(new_bboxes)
 
         new_bboxes = new_bboxes[: self._max_items_per_image]
 
@@ -55,7 +55,9 @@ class WiderFace(tv.datasets.WIDERFace):
         new_bboxes[:, 0::2] /= new_img.size(2)  # width
         new_bboxes[:, 1::2] /= new_img.size(1)  # height
 
-        new_labels = torch.tensor([[1.0, 0.0]]).expand(size=(new_bboxes.size(0), 2))
+        # one-hot label
+        # new_labels = torch.tensor([[1.0, 0.0]]).expand(size=(new_bboxes.size(0), 2))
+        new_labels = torch.zeros(size=(new_bboxes.size(0),))
 
         return new_img, {"boxes": new_bboxes, "labels": new_labels}
 

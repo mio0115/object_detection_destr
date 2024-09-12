@@ -327,7 +327,7 @@ if __name__ == "__main__":
         num_classes=args.num_cls,
         matcher=matcher,
         loss_fn={
-            "class": torch.nn.BCEWithLogitsLoss(),
+            "class": torch.nn.CrossEntropyLoss(),
             "bbox": torch.nn.L1Loss(),
             "ciou": CompleteIOULoss(),
         },
