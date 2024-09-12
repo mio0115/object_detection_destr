@@ -58,7 +58,7 @@ class SetCriterion(nn.Module):
         for b_output_cls, b_output_box, b_targets, b_idx in zip(
             outputs["pred_class"], outputs["pred_boxes"], targets, indices
         ):
-            output_pred_boxes = b_output_box.index_select(index=b_idx[0], dim=0)
+            output_pred_boxes = from_cxcyhw_to_xyxy(b_output_box).index_select(index=b_idx[0], dim=0)
             gt_class = b_targets["labels"].index_select(index=b_idx[1], dim=0)
             gt_boxes = b_targets["boxes"].index_select(index=b_idx[1], dim=0)
 
