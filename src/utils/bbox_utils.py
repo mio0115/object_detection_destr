@@ -1,5 +1,3 @@
-import math
-
 import torch
 import numpy as np
 
@@ -115,8 +113,6 @@ def complete_iou(pred_xyxy: torch.Tensor, gt_xyxy: torch.Tensor, epsilon=1e-6):
 
     iou = get_iou(pred_xyxy, gt_xyxy)
 
-    # breakpoint()
-
     # compute diagonal length of minimal boxes containing predicted bbox and corresponding ground truth bbox
     minimal_box_wh = torch.maximum(
         pred_xyxy[:, None, 2:], gt_xyxy[None, :, 2:]
@@ -132,24 +128,20 @@ def complete_iou(pred_xyxy: torch.Tensor, gt_xyxy: torch.Tensor, epsilon=1e-6):
         4
         / pow(torch.pi, 2)
         * torch.pow(
-            torch.atan(gt_cxcyhw[..., 3] / gt_cxcyhw[..., 2])[None, :]
-            - torch.atan(pred_cxcyhw[..., 3] / pred_cxcyhw[..., 2])[:, None],
+            torch.atan(gt_cxcyhw[..., 3] / gt_cxcyhw[..., 2].clamp(min=epsilon))[None, :]
+            - torch.atan(pred_cxcyhw[..., 3] / pred_cxcyhw[..., 2].clamp(min=epsilon))[:, None],
             2,
         )
     )
     alpha = torch.where(iou < 0.5, 0, v / (1 - iou + v))
 
-    # if v.isnan().any() or alpha.isnan().any() or (center_dist == 0).any():
-    ciou = (1 - iou) + center_dist.pow(2) / (diag_len + epsilon).pow(2) + alpha * v
-    # breakpoint()
-
+    ciou = (1 - iou) + center_dist.pow(2) / diag_len.clamp(min=epsilon).pow(2) + alpha * v
+    
     return ciou
 
 
 @from_np_to_tensor
 def get_iou(bbox1, bbox2, epsilon=1e-6):
-
-    # breakpoint()
 
     inter_mins = torch.maximum(bbox1[:, None, :2], bbox2[None, :, :2])
     inter_maxs = torch.minimum(bbox1[:, None, 2:], bbox2[None, :, 2:])
@@ -161,7 +153,7 @@ def get_iou(bbox1, bbox2, epsilon=1e-6):
 
     union_area = bbox1_area[:, None] + bbox2_area[None, :] - inter_area
 
-    iou = inter_area / (union_area + epsilon)
+    iou = inter_area / union_area.clamp(epsilon)
 
     return iou
 
@@ -169,16 +161,12 @@ def get_iou(bbox1, bbox2, epsilon=1e-6):
 def filter_flat_box(boxes, epsilon=1e-6):
     """Filter boxes with height or weight is 0"""
 
-    # breakpoint()
-
     boxes_wh = torch.stack(
         [boxes[..., 2] - boxes[..., 0], boxes[..., 3] - boxes[..., 1]], dim=1
     )
     boxes_zero = (boxes_wh > epsilon).all(-1)
 
     filtered_boxes = boxes[boxes_zero]
-
-    # breakpoint()
 
     return filtered_boxes
 
