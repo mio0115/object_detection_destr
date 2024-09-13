@@ -1,4 +1,5 @@
 import torch
+from torch.nn import functional as F
 import numpy as np
 
 
@@ -74,13 +75,15 @@ def to_device(inputs, device):
 
     return new_inputs
 
+
 def reduce_dict(dict_, weights, default_weight: float = 1.0):
     sum_ = 0
-    
+
     for key, val in dict_.items():
         sum_ += val * weights.get(key, default_weight)
-    
+
     return sum_
+
 
 def np_softmax(x, axis=-1):
     y = np.exp(x - np.max(x, axis=axis, keepdims=True))
@@ -88,7 +91,10 @@ def np_softmax(x, axis=-1):
 
     return f_x
 
-def sigmoid_focal_loss(inputs, targets, num_boxes, alpha: float = 0.25, gamma: float = 2):
+
+def sigmoid_focal_loss(
+    inputs, targets, num_boxes, alpha: float = 0.25, gamma: float = 2
+):
     """
     Loss used in RetinaNet for dense detection: https://arxiv.org/abs/1708.02002.
     Args:
@@ -105,12 +111,14 @@ def sigmoid_focal_loss(inputs, targets, num_boxes, alpha: float = 0.25, gamma: f
         Loss tensor
     """
     prob = inputs.sigmoid()
-    ce_loss = torch.nn.functional.binary_cross_entropy_with_logits(inputs, targets, reduction='none')
+    ce_loss = F.binary_cross_entropy_with_logits(
+        inputs, targets.float(), reduction="none"
+    )
     p_t = prob * targets + (1 - prob) * (1 - targets)
     loss = ce_loss * ((1 - p_t) ** gamma)
 
     if alpha >= 0:
         alpha_t = alpha * targets + (1 - alpha) * (1 - targets)
         loss = alpha_t * loss
-    
+
     return loss.mean(1).sum() / num_boxes

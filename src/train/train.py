@@ -31,7 +31,7 @@ def train(
         "ciou": args.set_cost_ciou,
     }
 
-    lowest_vloss, g_step, g_vstep, log_interval = 10000, 0, 0, 1
+    lowest_vloss, g_step, g_vstep, log_interval = 10000, 0, 0, 100
     for idx in range(args.epochs):
         model.train()
         loss_model, loss_det, duration, g_step = train_one_epoch(
@@ -97,7 +97,6 @@ def train(
                         running_vloss_class,
                         running_vloss_ciou,
                     )
-                break
 
             writer.add_scalar("Metric/mAP", metric.compute(), idx)
             vloss_model = running_vloss_model / len(valid_loader.dataset)
@@ -135,7 +134,7 @@ def train_one_epoch(
     dataloader: torch.utils.data.DataLoader,
 ):
     running_loss_det, running_loss_model = 0.0, 0.0
-    log_interval = 1
+    log_interval = 100
     prefix_loss_model, prefix_loss_det = 0, 0
 
     running_loss_class, running_loss_ciou = 0.0, 0.0
@@ -195,7 +194,6 @@ def train_one_epoch(
 
             prefix_loss_det, prefix_loss_model = running_loss_det, running_loss_model
             prefix_loss_class, prefix_loss_ciou = running_loss_class, running_loss_ciou
-        break
 
     train_loss_model = running_loss_model / len(dataloader.dataset)
     train_loss_det = running_loss_det / len(dataloader.dataset)

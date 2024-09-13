@@ -32,39 +32,44 @@ class SetCriterion(nn.Module):
         ordered_logits = torch.concat([selected_objects, remaining_objects], dim=0)
 
         objects_num = pred_logits.size(0)
-        #dummy_class = torch.tensor([[0, 1]], device=pred_logits.device).expand(
-        #    (objects_num - pred_idx.size(0), 2)
-        #)
-        dummy_class = torch.ones((objects_num - pred_idx.size(0),), device=pred_logits.device).long()
+        dummy_class = torch.ones(
+            (objects_num - pred_idx.size(0),), device=pred_logits.device
+        ).long()
         gt_class = torch.concat([gt_class, dummy_class], dim=0)
+        oh_gt_class = nn.functional.one_hot(gt_class, num_classes=2)
 
-        return self._loss_fns["class"](ordered_logits, 1 - gt_class, ordered_logits.size(0))
+        return self._loss_fns["class"](
+            ordered_logits, oh_gt_class, ordered_logits.size(0)
+        )
 
     def forward(self, outputs, targets):
         losses = {"class": [], "bbox": [], "ciou": []}
+        device = outputs["pred_class"].device
 
-        indices = to_device(
-            self._matcher(outputs, targets), device=outputs["pred_class"].device
-        )
+        indices = to_device(self._matcher(outputs, targets), device=device)
 
         for b_output_cls, b_output_box, b_targets, b_idx in zip(
             outputs["pred_class"], outputs["pred_boxes"], targets, indices
         ):
-            output_pred_boxes = from_cxcyhw_to_xyxy(b_output_box).index_select(index=b_idx[0], dim=0)
+            output_pred_boxes = from_cxcyhw_to_xyxy(b_output_box).index_select(
+                index=b_idx[0], dim=0
+            )
             gt_class = b_targets["labels"].index_select(index=b_idx[1], dim=0)
             gt_boxes = b_targets["boxes"].index_select(index=b_idx[1], dim=0)
 
-            losses["class"].append(self._get_class_loss(b_output_cls, b_idx[0], gt_class))
+            losses["class"].append(
+                self._get_class_loss(b_output_cls, b_idx[0], gt_class)
+            )
             if b_idx[0].size(0) > 0:
                 losses["bbox"].append(self._get_bbox_loss(output_pred_boxes, gt_boxes))
                 losses["ciou"].append(self._get_ciou_loss(output_pred_boxes, gt_boxes))
 
         # average the batch
         for key, val in losses.items():
-            if len(val) == 0:
-                losses[key] = torch.zeros(1, device=outputs["pred_class"].device)
+            if val:
+                losses[key] = torch.stack(val).mean().to(device=device)
             else:
-                losses[key] = torch.tensor(val).mean()
+                losses[key] = torch.zeros(1, device=device)
         return losses
 
 
@@ -136,7 +141,9 @@ class MeanAveragePrecision(nn.Module):
             for b_pr_logits, b_pr_boxes, b_gt in zip(
                 outputs["pred_class"].numpy(), outputs["pred_boxes"].numpy(), targets
             ):
-                b_gt_class = nn.functional.one_hot(b_gt['labels'], num_classes=self._num_cls+1).numpy()
+                b_gt_class = nn.functional.one_hot(
+                    b_gt["labels"], num_classes=self._num_cls + 1
+                ).numpy()
                 b_gt_boxes = b_gt["boxes"].numpy()
                 b_pr_boxes = from_cxcyhw_to_xyxy(bbox_coord=b_pr_boxes).numpy()
 
