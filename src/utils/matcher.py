@@ -160,7 +160,7 @@ class HungarianMatcherWoL1(nn.Module):
 
         # turn one-hot encoding labels to normal labels
         #tgt_ids = torch.cat([tgt["labels"] for tgt in targets]).argmax(-1)
-        tgt_ids = torch.cat([tgt['labels'] for tgt in targets])
+        tgt_ids = torch.cat([tgt['labels'] for tgt in targets]).long()
         tgt_bbox = torch.cat([tgt["boxes"] for tgt in targets])
 
         # Compute the classification cost.
