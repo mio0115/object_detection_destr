@@ -35,7 +35,7 @@ class SetCriterion(nn.Module):
         #dummy_class = torch.tensor([[0, 1]], device=pred_logits.device).expand(
         #    (objects_num - pred_idx.size(0), 2)
         #)
-        dummy_class = torch.ones((objects_num - pred_idx.size(0),), device=pred_logits.device)
+        dummy_class = torch.ones((objects_num - pred_idx.size(0),), device=pred_logits.device).long()
         gt_class = torch.concat([gt_class, dummy_class], dim=0)
 
         return self._loss_fns["class"](ordered_logits, gt_class)

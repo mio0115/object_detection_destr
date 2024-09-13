@@ -57,7 +57,7 @@ class WiderFace(tv.datasets.WIDERFace):
 
         # one-hot label
         # new_labels = torch.tensor([[1.0, 0.0]]).expand(size=(new_bboxes.size(0), 2))
-        new_labels = torch.zeros(size=(new_bboxes.size(0),))
+        new_labels = torch.zeros(size=(new_bboxes.size(0),)).long()
 
         return new_img, {"boxes": new_bboxes, "labels": new_labels}
 
