@@ -8,7 +8,7 @@ from torch.utils.tensorboard import SummaryWriter
 from ..model.model import build_model
 from ..dataset.transforms import TransformTypes, build_transform
 from ..dataset.dataset import WiderFace, widerface_collate_fn
-from ..utils.misc import to_device, reduce_dict
+from ..utils.misc import to_device, reduce_dict, sigmoid_focal_loss
 from ..utils.matcher import build_matcher, HungarianMatcherWoL1
 from ..utils.criterion import SetCriterion, CompleteIOULoss, MeanAveragePrecision
 
@@ -327,7 +327,7 @@ if __name__ == "__main__":
         num_classes=args.num_cls,
         matcher=matcher,
         loss_fn={
-            "class": torch.nn.CrossEntropyLoss(),
+            "class": sigmoid_focal_loss,
             "bbox": torch.nn.L1Loss(),
             "ciou": CompleteIOULoss(),
         },

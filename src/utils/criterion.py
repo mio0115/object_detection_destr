@@ -38,7 +38,7 @@ class SetCriterion(nn.Module):
         dummy_class = torch.ones((objects_num - pred_idx.size(0),), device=pred_logits.device).long()
         gt_class = torch.concat([gt_class, dummy_class], dim=0)
 
-        return self._loss_fns["class"](ordered_logits, gt_class)
+        return self._loss_fns["class"](ordered_logits, 1 - gt_class, ordered_logits.size(0))
 
     def forward(self, outputs, targets):
         losses = {"class": [], "bbox": [], "ciou": []}
@@ -61,7 +61,10 @@ class SetCriterion(nn.Module):
 
         # average the batch
         for key, val in losses.items():
-            losses[key] = torch.tensor(val).mean()
+            if len(val) == 0:
+                losses[key] = torch.zeros(1, device=outputs["pred_class"].device)
+            else:
+                losses[key] = torch.tensor(val).mean()
         return losses
 
 
