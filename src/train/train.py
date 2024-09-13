@@ -31,7 +31,7 @@ def train(
         "ciou": args.set_cost_ciou,
     }
 
-    lowest_vloss, g_step, g_vstep, log_interval = 10000, 0, 0, 100
+    lowest_vloss, g_step, g_vstep, log_interval = 10000, 0, 0, 1
     for idx in range(args.epochs):
         model.train()
         loss_model, loss_det, duration, g_step = train_one_epoch(
@@ -60,10 +60,14 @@ def train(
                 vloss_model = criterion(voutputs_model, vtargets)
                 vloss_det = criterion(voutputs_det, vtargets)
 
-                running_vloss_class += vloss_model['class'].item() * vinputs.size(0)
-                running_vloss_ciou += vloss_model['ciou'].item() * vinputs.size(0)
-                running_vloss_model += reduce_dict(vloss_model, weights=loss_weights).item() * vinputs.size(0)
-                running_vloss_det += reduce_dict(vloss_det, weights=loss_weights).item() * vinputs.size(0)
+                running_vloss_class += vloss_model["class"].item() * vinputs.size(0)
+                running_vloss_ciou += vloss_model["ciou"].item() * vinputs.size(0)
+                running_vloss_model += reduce_dict(
+                    vloss_model, weights=loss_weights
+                ).item() * vinputs.size(0)
+                running_vloss_det += reduce_dict(
+                    vloss_det, weights=loss_weights
+                ).item() * vinputs.size(0)
 
                 g_vstep += 1
                 if g_vstep % log_interval == 0:
@@ -73,8 +77,12 @@ def train(
                     avg_vloss_det = (running_vloss_det - prefix_vloss_det) / (
                         log_interval * args.batch_size
                     )
-                    avg_vloss_cls = (running_vloss_class - prefix_vloss_class) / (log_interval * args.batch_size)
-                    avg_vloss_ciou = (running_vloss_ciou - prefix_vloss_ciou) / (log_interval * args.batch_size)
+                    avg_vloss_cls = (running_vloss_class - prefix_vloss_class) / (
+                        log_interval * args.batch_size
+                    )
+                    avg_vloss_ciou = (running_vloss_ciou - prefix_vloss_ciou) / (
+                        log_interval * args.batch_size
+                    )
 
                     writer.add_scalar("Loss/valid/model", avg_vloss_model, g_vstep)
                     writer.add_scalar("Loss/valid/det", avg_vloss_det, g_vstep)
@@ -85,7 +93,11 @@ def train(
                         running_vloss_det,
                         running_vloss_model,
                     )
-                    prefix_vloss_class, prefix_vloss_ciou = (running_vloss_class, running_vloss_ciou)
+                    prefix_vloss_class, prefix_vloss_ciou = (
+                        running_vloss_class,
+                        running_vloss_ciou,
+                    )
+                break
 
             writer.add_scalar("Metric/mAP", metric.compute(), idx)
             vloss_model = running_vloss_model / len(valid_loader.dataset)
@@ -123,7 +135,7 @@ def train_one_epoch(
     dataloader: torch.utils.data.DataLoader,
 ):
     running_loss_det, running_loss_model = 0.0, 0.0
-    log_interval = 100
+    log_interval = 1
     prefix_loss_model, prefix_loss_det = 0, 0
 
     running_loss_class, running_loss_ciou = 0.0, 0.0
@@ -140,19 +152,26 @@ def train_one_epoch(
         loss_model = criterion(model_outputs, targets)
         loss_det = criterion(det_outputs, targets)
 
-        running_loss_class += loss_model['class'].item() * inputs.size(0)
-        running_loss_ciou += loss_model['ciou'].item() * inputs.size(0)
+        running_loss_class += loss_model["class"].item() * inputs.size(0)
+        running_loss_ciou += loss_model["ciou"].item() * inputs.size(0)
 
-        total_loss = reduce_dict(loss_model, weights=loss_weights) * 0.7 + reduce_dict(loss_det, weights=loss_weights) * 0.3
+        total_loss = (
+            reduce_dict(loss_model, weights=loss_weights) * 0.7
+            + reduce_dict(loss_det, weights=loss_weights) * 0.3
+        )
 
         total_loss.backward()
         optimizer.step()
 
-        running_loss_class += loss_model['class'].item() * inputs.size(0)
-        running_loss_ciou += loss_model['ciou'].item() * inputs.size(0)
+        running_loss_class += loss_model["class"].item() * inputs.size(0)
+        running_loss_ciou += loss_model["ciou"].item() * inputs.size(0)
 
-        running_loss_model += reduce_dict(loss_model, weights=loss_weights).item() * inputs.size(0)
-        running_loss_det += reduce_dict(loss_det, weights=loss_weights).item() * inputs.size(0)
+        running_loss_model += reduce_dict(
+            loss_model, weights=loss_weights
+        ).item() * inputs.size(0)
+        running_loss_det += reduce_dict(
+            loss_det, weights=loss_weights
+        ).item() * inputs.size(0)
 
         g_step += 1
         if g_step % log_interval == 0:
@@ -162,8 +181,12 @@ def train_one_epoch(
             avg_loss_det = (running_loss_det - prefix_loss_det) / (
                 log_interval * args.batch_size
             )
-            avg_loss_cls = (running_loss_class - prefix_loss_class) / (log_interval * args.batch_size)
-            avg_loss_ciou = (running_loss_ciou - prefix_loss_ciou) / (log_interval * args.batch_size)
+            avg_loss_cls = (running_loss_class - prefix_loss_class) / (
+                log_interval * args.batch_size
+            )
+            avg_loss_ciou = (running_loss_ciou - prefix_loss_ciou) / (
+                log_interval * args.batch_size
+            )
 
             writer.add_scalar("Loss/train/model", avg_loss_model, g_step)
             writer.add_scalar("Loss/train/det", avg_loss_det, g_step)
@@ -172,6 +195,7 @@ def train_one_epoch(
 
             prefix_loss_det, prefix_loss_model = running_loss_det, running_loss_model
             prefix_loss_class, prefix_loss_ciou = running_loss_class, running_loss_ciou
+        break
 
     train_loss_model = running_loss_model / len(dataloader.dataset)
     train_loss_det = running_loss_det / len(dataloader.dataset)
