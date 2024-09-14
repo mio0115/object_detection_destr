@@ -128,10 +128,6 @@ def check_bbox_cxcyhw(bbox_coord):
 def complete_iou(pred_xyxy: torch.Tensor, gt_xyxy: torch.Tensor, epsilon=1e-6):
     pred_cxcyhw = from_xyxy_to_cxcyhw(pred_xyxy)
     gt_cxcyhw = from_xyxy_to_cxcyhw(gt_xyxy)
-    check_bbox_xyxy(pred_xyxy)
-    check_bbox_xyxy(gt_xyxy)
-    check_bbox_cxcyhw(pred_cxcyhw)
-    check_bbox_cxcyhw(gt_cxcyhw)
 
     iou = get_iou(pred_xyxy, gt_xyxy)
     if (iou < 0).any():
@@ -141,13 +137,14 @@ def complete_iou(pred_xyxy: torch.Tensor, gt_xyxy: torch.Tensor, epsilon=1e-6):
     minimal_box_wh = torch.maximum(
         pred_xyxy[:, None, 2:], gt_xyxy[None, :, 2:]
     ) - torch.minimum(pred_xyxy[:, None, :2], gt_xyxy[None, :, :2])
-    diag_len = minimal_box_wh.pow(2).sum(-1).sqrt()
+    minimal_box_wh = minimal_box_wh.clamp(min=0)
+    diag_len = minimal_box_wh.pow(2).sum(-1)
     if diag_len.min() < 1e-6:
         print(f"Warning: too short {diag_len=}")
 
     # compute distance between centers of predicted bbox and corresponding ground truth bbox
     center_wh = torch.abs(pred_cxcyhw[:, None, :2] - gt_cxcyhw[None, :, :2])
-    center_dist = center_wh.pow(2).sum(-1).sqrt()
+    center_dist = center_wh.pow(2).sum(-1)
 
     # compute V and alpha
     v = (
@@ -163,17 +160,18 @@ def complete_iou(pred_xyxy: torch.Tensor, gt_xyxy: torch.Tensor, epsilon=1e-6):
             2,
         )
     )
-    alpha = torch.where(iou < 0.5, 0, v / (1 - iou + v))
+    with torch.no_grad():
+        large_iou = (iou > 0.5).float()
+        alpha = large_iou * (v / (1 - iou + v))
     if v.max() > 1000:
         print(f"Warning: too large {v=}")
     if alpha.max() > 1:
-        print(f"Warning: too large {alpha=}")
+        print(f"Warning: too large {alpha[alpha>1]}")
 
-    ciou = (
-        (1 - iou) + center_dist.pow(2) / diag_len.clamp(min=epsilon).pow(2) + alpha * v
-    )
+    cious = iou - center_dist / diag_len.clamp(min=epsilon) - alpha * v
+    cious = cious.clamp(min=-1.0, max=1.0)
 
-    return ciou
+    return 1 - cious
 
 
 @from_np_to_tensor
@@ -181,8 +179,8 @@ def get_iou(bbox1, bbox2, epsilon=1e-6):
 
     inter_mins = torch.maximum(bbox1[:, None, :2], bbox2[None, :, :2])
     inter_maxs = torch.minimum(bbox1[:, None, 2:], bbox2[None, :, 2:])
-    inter_wh = inter_maxs - inter_mins
-    inter_area = torch.clamp(inter_wh[..., 0] * inter_wh[..., 1], min=0)
+    inter_wh = torch.clamp(inter_maxs - inter_mins, min=0)
+    inter_area = inter_wh[..., 0] * inter_wh[..., 1]
 
     bbox1_area = (bbox1[..., 2] - bbox1[..., 0]) * (bbox1[..., 3] - bbox1[..., 1])
     bbox2_area = (bbox2[..., 2] - bbox2[..., 0]) * (bbox2[..., 3] - bbox2[..., 1])
