@@ -142,7 +142,7 @@ def complete_iou(pred_xyxy: torch.Tensor, gt_xyxy: torch.Tensor, epsilon=1e-6):
         pred_xyxy[:, None, 2:], gt_xyxy[None, :, 2:]
     ) - torch.minimum(pred_xyxy[:, None, :2], gt_xyxy[None, :, :2])
     diag_len = minimal_box_wh.pow(2).sum(-1).sqrt()
-    if diag_len < 1e-6:
+    if diag_len.min() < 1e-6:
         print(f"Warning: too short {diag_len=}")
 
     # compute distance between centers of predicted bbox and corresponding ground truth bbox
