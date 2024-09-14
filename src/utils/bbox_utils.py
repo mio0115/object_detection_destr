@@ -182,7 +182,7 @@ def get_iou(bbox1, bbox2, epsilon=1e-6):
     inter_mins = torch.maximum(bbox1[:, None, :2], bbox2[None, :, :2])
     inter_maxs = torch.minimum(bbox1[:, None, 2:], bbox2[None, :, 2:])
     inter_wh = inter_maxs - inter_mins
-    inter_area = inter_wh[..., 0] * inter_wh[..., 1]
+    inter_area = torch.clamp(inter_wh[..., 0] * inter_wh[..., 1], min=0)
 
     bbox1_area = (bbox1[..., 2] - bbox1[..., 0]) * (bbox1[..., 3] - bbox1[..., 1])
     bbox2_area = (bbox2[..., 2] - bbox2[..., 0]) * (bbox2[..., 3] - bbox2[..., 1])
