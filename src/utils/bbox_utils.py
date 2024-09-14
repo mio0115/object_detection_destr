@@ -107,17 +107,43 @@ def from_xywh_to_xyxy(bbox_coord: torch.Tensor) -> torch.Tensor:
     return new_bbox_coord
 
 
+def check_bbox_xyxy(bbox_coord):
+    if bbox_coord.min() < 0:
+        print(f"Warning: negative coord: {bbox_coord}")
+    if (bbox_coord[..., 0] >= bbox_coord[..., 2]).any():
+        print(f"Warning: non-positive width {bbox_coord}")
+    if (bbox_coord[..., 1] >= bbox_coord[..., 3]).any():
+        print(f"Warning: non-positive height: {bbox_coord}")
+
+
+def check_bbox_cxcyhw(bbox_coord):
+    if bbox_coord[..., 2].min() <= 0:
+        print(f"Warning: non-positive height {bbox_coord}")
+    if bbox_coord[..., 3].min() <= 0:
+        print(f"Warning: non-positive width {bbox_coord}")
+    if bbox_coord[..., :2].min() < 0:
+        print(f"Warning: negative center {bbox_coord}")
+
+
 def complete_iou(pred_xyxy: torch.Tensor, gt_xyxy: torch.Tensor, epsilon=1e-6):
     pred_cxcyhw = from_xyxy_to_cxcyhw(pred_xyxy)
     gt_cxcyhw = from_xyxy_to_cxcyhw(gt_xyxy)
+    check_bbox_xyxy(pred_xyxy)
+    check_bbox_xyxy(gt_xyxy)
+    check_bbox_cxcyhw(pred_cxcyhw)
+    check_bbox_cxcyhw(gt_cxcyhw)
 
     iou = get_iou(pred_xyxy, gt_xyxy)
+    if (iou < 0).any():
+        print("Warning: negative IoU")
 
     # compute diagonal length of minimal boxes containing predicted bbox and corresponding ground truth bbox
     minimal_box_wh = torch.maximum(
         pred_xyxy[:, None, 2:], gt_xyxy[None, :, 2:]
     ) - torch.minimum(pred_xyxy[:, None, :2], gt_xyxy[None, :, :2])
     diag_len = minimal_box_wh.pow(2).sum(-1).sqrt()
+    if diag_len < 1e-6:
+        print(f"Warning: too short {diag_len=}")
 
     # compute distance between centers of predicted bbox and corresponding ground truth bbox
     center_wh = torch.abs(pred_cxcyhw[:, None, :2] - gt_cxcyhw[None, :, :2])
@@ -128,15 +154,25 @@ def complete_iou(pred_xyxy: torch.Tensor, gt_xyxy: torch.Tensor, epsilon=1e-6):
         4
         / pow(torch.pi, 2)
         * torch.pow(
-            torch.atan(gt_cxcyhw[..., 3] / gt_cxcyhw[..., 2].clamp(min=epsilon))[None, :]
-            - torch.atan(pred_cxcyhw[..., 3] / pred_cxcyhw[..., 2].clamp(min=epsilon))[:, None],
+            torch.atan(gt_cxcyhw[..., 3] / gt_cxcyhw[..., 2].clamp(min=epsilon))[
+                None, :
+            ]
+            - torch.atan(pred_cxcyhw[..., 3] / pred_cxcyhw[..., 2].clamp(min=epsilon))[
+                :, None
+            ],
             2,
         )
     )
     alpha = torch.where(iou < 0.5, 0, v / (1 - iou + v))
+    if v.max() > 1000:
+        print(f"Warning: too large {v=}")
+    if alpha.max() > 1:
+        print(f"Warning: too large {alpha=}")
 
-    ciou = (1 - iou) + center_dist.pow(2) / diag_len.clamp(min=epsilon).pow(2) + alpha * v
-    
+    ciou = (
+        (1 - iou) + center_dist.pow(2) / diag_len.clamp(min=epsilon).pow(2) + alpha * v
+    )
+
     return ciou
 
 
