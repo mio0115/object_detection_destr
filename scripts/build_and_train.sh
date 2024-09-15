@@ -14,7 +14,7 @@ BATCH_SIZE=8
 SET_COST_CLASS=0.2
 SET_COST_CIOU=0.2
 SET_COST_BBOX=0.5
-MODEL_WEIGHT_NAME="model_weights.pth"
+RESUME_FROM="model_weights.pth"
 DEVICE="cuda"
 SAVE_AS="model.weights.pth"
 NUM_ENC=6
@@ -37,7 +37,7 @@ while [[ "$#" -gt 0 ]]; do
         --set_cost_class) SET_COST_CLASS="$2"; shift;;
         --set_cost_ciou) SET_COST_CIOU="$2"; shift;;
         --set_cost_bbox) SET_COST_BBOX="$2"; shift;;
-        --model_weight_name) MODEL_WEIGHT_NAME="$2"; shift;;
+        --resume_from) RESUME_FROM="$2"; shift;;
         --device) DEVICE="$2"; shift;;
         --save_as) SAVE_AS="$2"; shift;;
         --number_encoder_blocks) NUM_ENC="$2"; shift;;
@@ -81,7 +81,7 @@ docker run --rm -it \
             --set_cost_class=${SET_COST_CLASS} \
             --set_cost_ciou=${SET_COST_CIOU} \
             --set_cost_bbox=${SET_COST_BBOX} \
-            --model_weight_name=${MODEL_WEIGHT_NAME} \
+            --resume_from=${MODEL_WEIGHT_NAME} \
             --device=${DEVICE} \
             --save_as=${SAVE_AS} \
             --number_encoder_blocks=${NUM_ENC} \
