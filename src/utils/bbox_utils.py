@@ -130,8 +130,6 @@ def complete_iou(pred_xyxy: torch.Tensor, gt_xyxy: torch.Tensor, epsilon=1e-6):
     gt_cxcyhw = from_xyxy_to_cxcyhw(gt_xyxy)
 
     iou = get_iou(pred_xyxy, gt_xyxy)
-    if (iou < 0).any():
-        print("Warning: negative IoU")
 
     # compute diagonal length of minimal boxes containing predicted bbox and corresponding ground truth bbox
     minimal_box_wh = torch.maximum(
@@ -139,8 +137,6 @@ def complete_iou(pred_xyxy: torch.Tensor, gt_xyxy: torch.Tensor, epsilon=1e-6):
     ) - torch.minimum(pred_xyxy[:, None, :2], gt_xyxy[None, :, :2])
     minimal_box_wh = minimal_box_wh.clamp(min=0)
     diag_len = minimal_box_wh.pow(2).sum(-1)
-    if diag_len.min() < 1e-6:
-        print(f"Warning: too short {diag_len=}")
 
     # compute distance between centers of predicted bbox and corresponding ground truth bbox
     center_wh = torch.abs(pred_cxcyhw[:, None, :2] - gt_cxcyhw[None, :, :2])
@@ -163,10 +159,6 @@ def complete_iou(pred_xyxy: torch.Tensor, gt_xyxy: torch.Tensor, epsilon=1e-6):
     with torch.no_grad():
         large_iou = (iou > 0.5).float()
         alpha = large_iou * (v / (1 - iou + v))
-    if v.max() > 1000:
-        print(f"Warning: too large {v=}")
-    if alpha.max() > 1:
-        print(f"Warning: too large {alpha[alpha>1]}")
 
     cious = iou - center_dist / diag_len.clamp(min=epsilon) - alpha * v
     cious = cious.clamp(min=-1.0, max=1.0)
