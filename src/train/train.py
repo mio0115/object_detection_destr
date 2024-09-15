@@ -217,7 +217,7 @@ if __name__ == "__main__":
         "-lr",
         "--learning_rate",
         type=float,
-        default=1e-3,
+        default=1e-5,
         dest="lr",
         help="Learning rate of the model except backbone",
     )
@@ -238,21 +238,21 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--set_cost_class",
-        default=0.2,
+        default=0.5,
         type=float,
         dest="set_cost_class",
         help="Weight of class lost",
     )
     parser.add_argument(
         "--set_cost_bbox",
-        default=0.5,
+        default=0,
         type=float,
         dest="set_cost_bbox",
         help="Weight of bbox lost",
     )
     parser.add_argument(
         "--set_cost_ciou",
-        default=0.2,
+        default=0.5,
         type=float,
         dest="set_cost_ciou",
         help="Weight of ciou lost",
@@ -260,7 +260,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "-bs",
         "--batch_size",
-        default=4,
+        default=12,
         type=int,
         dest="batch_size",
         help="Number of samples in batch",
@@ -274,10 +274,10 @@ if __name__ == "__main__":
     )
     parser.add_argument("--resume", action="store_true", help="Resume from checkpoint")
     parser.add_argument(
-        "--model_weight_name",
+        "--resume_from",
         default="model_weights.pth",
         type=str,
-        help="Name of model weights to restore",
+        help="Name of model weights to resume",
     )
     parser.add_argument(
         "--device", default="cuda", dest="device", help="Device to use for training"
