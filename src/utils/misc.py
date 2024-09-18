@@ -30,7 +30,9 @@ def nested_tensor_from_tensor_list(tensor_list: list[torch.Tensor]):
         dtype = tensor_list[0].dtype
         device = tensor_list[0].device
         tensor = torch.zeros(size=batch_shape, dtype=dtype, device=device)
-        mask = torch.ones(size=(batch_size, height, width), dtype=dtype, device=device)
+        mask = torch.ones(
+            size=(batch_size, height, width), dtype=dtype, device=device
+        )
 
         for img, pad_img, m in zip(tensor_list, tensor, mask):
             pad_img[: img.shape[0], : img.shape[1], : img.shape[2]].copy_(img)
@@ -122,3 +124,24 @@ def sigmoid_focal_loss(
         loss = alpha_t * loss
 
     return loss.mean(1).sum() / num_boxes
+
+
+def make_grid(
+    height: int, width: int, bias: float = 0.5, norm: bool = True
+) -> torch.Tensor:
+    assert height > 0, "Height should be positive"
+    assert width > 0, "Width should be positive"
+
+    h = torch.arange(0, height) + bias
+    w = torch.arange(0, width) + bias
+
+    if norm:
+        h /= height
+        w /= width
+
+    grid = torch.stack(
+        torch.meshgrid(h, w, indexing="ij"),
+        -1,
+    )
+
+    return grid  # shape (height, width, 2)
