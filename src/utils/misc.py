@@ -1,3 +1,5 @@
+import os
+
 import torch
 from torch.nn import functional as F
 import numpy as np
@@ -145,3 +147,13 @@ def make_grid(
     )
 
     return grid  # shape (height, width, 2)
+
+
+def resume(model, optim, args):
+    path_to_ckpt = os.path.join(os.getcwd(), "checkpoints", args.resume_from)
+
+    ckpt = torch.load(path_to_ckpt, weights_only=True)
+    model.load_state_dict(ckpt["model_state_dict"])
+    optim.load_state_dict(ckpt["optimizer_state_dict"])
+
+    return model, optim
