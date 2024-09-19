@@ -6,14 +6,15 @@ import torch
 from torch.utils.tensorboard import SummaryWriter
 
 from .arg_parser import get_parser
-from ..model.model import build_model
+from ..model.model_ssd import build_model
 from ..dataset.transforms import TransformTypes, build_transform
 from ..dataset.dataset import WiderFace, widerface_collate_fn
-from ..utils.misc import to_device, reduce_dict, sigmoid_focal_loss
-from ..utils.matcher import build_matcher, HungarianMatcherWoL1
+from ..utils.misc import to_device, reduce_dict, resume
+from ..utils.matcher import build_matcher, SimpleMatcher
 from ..utils.criterion import (
-    SetCriterion,
-    CompleteIOULoss,
+    SSDCriterion,
+    SSDClassCriterion,
+    SSDLocalCriterion,
     MeanAveragePrecision,
 )
 
@@ -231,8 +232,7 @@ def test_model(model):
 
 
 if __name__ == "__main__":
-    parser = get_parser("destr")
-
+    parser = get_parser("ssd")
     args = parser.parse_args()
 
     model = build_model(args=args)
@@ -249,18 +249,20 @@ if __name__ == "__main__":
         ],
         lr=args.lr,
     )
+    if args.resume:
+        model, optim = resume(model=model, optim=optim, args=args)
 
-    matcher = build_matcher(HungarianMatcherWoL1)
-    criterion = SetCriterion(
+    matcher = build_matcher(SimpleMatcher, args)
+    criterion = SSDCriterion(
         num_classes=args.num_cls,
         matcher=matcher,
-        loss_fn={
-            "class": sigmoid_focal_loss,
-            "bbox": torch.nn.L1Loss(),
-            "ciou": CompleteIOULoss(),
+        loss_fns={
+            "class": SSDClassCriterion(args),
+            "local": SSDLocalCriterion(args),
         },
+        loss_coef=args.class_loss_coef,
     ).to(args.device)
-    metric = MeanAveragePrecision().to("cpu")
+    # metric = MeanAveragePrecision().to("cpu")
 
     path_to_dataset = os.path.join(os.getcwd(), "dataset")
     train_ds = WiderFace(
