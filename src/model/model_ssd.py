@@ -4,9 +4,7 @@ from torchvision import models as tv_models
 
 
 class SingleShotDetector(nn.Module):
-    def __init__(
-        self, backbone: nn.Module, non_max_sup: nn.Module, num_class: int
-    ):
+    def __init__(self, backbone: nn.Module, num_class: int):
         super().__init__()
 
         self._num_class = num_class  # exclude dummy class for background
@@ -14,15 +12,13 @@ class SingleShotDetector(nn.Module):
 
         self._backbone = backbone
         self._feature_maps = self._build_feature_maps(
-            embed_dim=[1024, 512, 512, 256, 256, 256],
-            hidden_dim=[256, 256, 128, 128, 128],
+            embed_dim=[1024, 512, 256, 256, 256],
+            hidden_dim=[1024, 256, 128, 128, 128],
         )
         self._detectors = self._build_detectors(
-            input_dim=[1024, 512, 512, 256, 256, 256],
+            input_dim=[512, 1024, 512, 256, 256, 256],
             default_boxes=self._num_boxes,
         )
-
-        self._nmp = non_max_sup
 
     def _build_detectors(
         self, input_dim: list[int], default_boxes: list[int]
@@ -62,7 +58,7 @@ class SingleShotDetector(nn.Module):
                         bias=False,
                     ),
                     nn.BatchNorm2d(num_features=inter_channels),
-                    nn.ReLU(),
+                    nn.ReLU(inplace=True),
                     nn.Conv2d(
                         in_channels=inter_channels,
                         out_channels=out_channels,
@@ -72,7 +68,7 @@ class SingleShotDetector(nn.Module):
                         bias=False,
                     ),
                     nn.BatchNorm2d(out_channels),
-                    nn.ReLU(),
+                    nn.ReLU(inplace=True),
                 )
             else:
                 block = nn.Sequential(
@@ -83,7 +79,7 @@ class SingleShotDetector(nn.Module):
                         bias=False,
                     ),
                     nn.BatchNorm2d(inter_channels),
-                    nn.ReLU(),
+                    nn.ReLU(inplace=True),
                     nn.Conv2d(
                         in_channels=inter_channels,
                         out_channels=out_channels,
@@ -91,13 +87,13 @@ class SingleShotDetector(nn.Module):
                         bias=False,
                     ),
                     nn.BatchNorm2d(out_channels),
-                    nn.ReLU(),
+                    nn.ReLU(inplace=True),
                 )
             blocks.append(block)
 
         return nn.ModuleList(blocks)
 
-    def forward(self, inputs):
+    def forward(self, inputs: torch.Tensor) -> dict[str : list[torch.Tensor]]:
         x = self._backbone(inputs)
 
         features = [x]
@@ -106,7 +102,7 @@ class SingleShotDetector(nn.Module):
             x = block(x)
             features.append(x)
 
-        outputs = []
+        outputs = {"boxes": [], "conf": []}
         for ft, det, num_boxes in zip(
             features, self._detectors, self._num_boxes
         ):
@@ -128,11 +124,10 @@ class SingleShotDetector(nn.Module):
             # note that both height and width are not constant
             # for each boxes, there are coordinate (cx, cy, h, w)
             # and the rest are confidence score (scr1, scr2, ..., scrn)
-            outputs.append(
-                torch.cat([bbox_embed, conf_embed], -1).contiguous()
-            )
+            outputs["boxes"].append(bbox_embed)
+            outputs["conf"].append(conf_embed)
 
-        outputs = self.nmp(outputs)
+        return outputs
 
 
 class Backbone(nn.Module):
@@ -144,3 +139,9 @@ class Backbone(nn.Module):
 
     def forward(self, inputs):
         return self._model(inputs)
+
+
+def build_model(args):
+    backbone = Backbone()
+
+    return SingleShotDetector(backbone=backbone, num_class=args.num_cls)
