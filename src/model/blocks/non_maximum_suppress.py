@@ -77,7 +77,7 @@ class NonMaximumSuppress(nn.Module):
             iou_masks = (
                 get_iou(bbox1=boxes_xyxy, bbox2=boxes_xyxy).triu(1) < 0.5
             )
-            iou_masks = iou_masks.all(1)
+            iou_masks = iou_masks.all(0)
 
             sel_boxes.append(boxes_cxcyhw[iou_masks])
             sel_conf.append(tmp_conf[iou_masks])
