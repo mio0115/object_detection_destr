@@ -2,7 +2,13 @@ import torch
 from torch import nn
 import numpy as np
 
-from .bbox_utils import complete_iou, get_iou, from_cxcyhw_to_xyxy
+from .bbox_utils import (
+    complete_iou,
+    get_iou,
+    from_xyxy_to_cxcyhw,
+    from_cxcyhw_to_xyxy,
+    gen_default_boxes,
+)
 from ..utils.misc import to_device, np_softmax
 
 
@@ -29,7 +35,9 @@ class SetCriterion(nn.Module):
         mask[pred_idx] = False
 
         remaining_objects = pred_logits[mask]
-        ordered_logits = torch.concat([selected_objects, remaining_objects], dim=0)
+        ordered_logits = torch.concat(
+            [selected_objects, remaining_objects], dim=0
+        )
 
         objects_num = pred_logits.size(0)
         dummy_class = torch.ones(
@@ -61,8 +69,12 @@ class SetCriterion(nn.Module):
                 self._get_class_loss(b_output_cls, b_idx[0], gt_class)
             )
             if b_idx[0].size(0) > 0:
-                losses["bbox"].append(self._get_bbox_loss(output_pred_boxes, gt_boxes))
-                losses["ciou"].append(self._get_ciou_loss(output_pred_boxes, gt_boxes))
+                losses["bbox"].append(
+                    self._get_bbox_loss(output_pred_boxes, gt_boxes)
+                )
+                losses["ciou"].append(
+                    self._get_ciou_loss(output_pred_boxes, gt_boxes)
+                )
 
         # average the batch
         for key, val in losses.items():
@@ -86,7 +98,9 @@ class CompleteIOULoss(nn.Module):
 class MeanAveragePrecision(nn.Module):
     # consider the case IoU >= 0.5 first
 
-    def __init__(self, num_cls: int = 1, threshold: float = 0.5, num_pred: int = 300):
+    def __init__(
+        self, num_cls: int = 1, threshold: float = 0.5, num_pred: int = 300
+    ):
         super(MeanAveragePrecision, self).__init__()
 
         self._num_cls = num_cls
@@ -139,7 +153,9 @@ class MeanAveragePrecision(nn.Module):
         for cls_ in range(self._num_cls):
 
             for b_pr_logits, b_pr_boxes, b_gt in zip(
-                outputs["pred_class"].numpy(), outputs["pred_boxes"].numpy(), targets
+                outputs["pred_class"].numpy(),
+                outputs["pred_boxes"].numpy(),
+                targets,
             ):
                 b_gt_class = nn.functional.one_hot(
                     b_gt["labels"], num_classes=self._num_cls + 1
@@ -183,6 +199,146 @@ class MeanAveragePrecision(nn.Module):
                         matched_gt_boxes[best_iou_idx] = 1
                     else:
                         self._false_positives[i] += 1
+
+
+class SSDCriterion(nn.Module):
+    def __init__(
+        self,
+        matcher: nn.Module,
+        num_class: int,
+        loss_fns: dict[str : nn.Module],
+        loss_coef: float,
+        *args,
+        **kwargs
+    ):
+        super(SSDCriterion, self).__init__(*args, **kwargs)
+
+        self._matcher = matcher
+        self._num_cls = num_class
+        self._loss_fns = loss_fns
+        self._loss_coef = loss_coef
+
+    def forward(
+        self,
+        outputs: dict[str : list[torch.Tensor]],
+        targets: dict[str : list[torch.Tensor]],
+    ):
+        pairs, pos_inds, neg_inds = self._matcher(outputs, targets)
+
+        local_loss = self._loss_fns["local"](
+            outputs["boxes"], targets["boxes"], pairs
+        ).mean()
+        class_loss = self._loss_fns["class"](
+            outputs["class"], targets["labels"], pairs, pos_inds, neg_inds
+        ).mean()
+
+        return (
+            self._loss_coef * class_loss + (1 - self._loss_coef) * local_loss
+        )
+
+
+class SSDLocalCriterion(nn.Module):
+    def __init__(self, args):
+        super(SSDLocalCriterion, self).__init__()
+
+        one_step = (args.scale_max - args.scale_min) / 5
+        scales = torch.arange(
+            start=args.scale_min,
+            end=args.scale_max + one_step + 0.01,
+            step=one_step,
+            dtype=torch.float32,
+            device=args.device,
+        )
+        aspect_ratios = [[2], [2, 3], [2, 3], [2, 3], [2], [2]]
+        self._default_boxes = gen_default_boxes(
+            shapes=[38, 19, 10, 5, 3, 1],
+            scales=scales,
+            aspect_ratios=aspect_ratios,
+        )
+        # new shape of default_boxes: (bs, seq_len, 4)
+        self._default_boxes = torch.cat(
+            [dboxes.flatten(1, 3) for dboxes in self._default_boxes], 1
+        )
+
+    def forward(
+        self,
+        boxes: list[torch.Tensor],
+        gt_boxes: list[torch.Tensor],
+        pairs: list[torch.Tensor],
+    ):
+        # format of boxes: cxcyhw
+        # format of gt_boxes: xyxy
+        # pairs: (pred_ind, gt_ind)
+
+        all_losses = []
+        for b_pairs, b_boxes, b_gt_boxes in zip(pairs, boxes, gt_boxes):
+            db_ind = b_pairs[:, 0]  # indices for default boxes
+            gt_ind = b_pairs[:, 1]  # indices for ground-truth
+            # TODO: check the format of coord in dataset
+            b_gt_boxes = from_xyxy_to_cxcyhw(b_gt_boxes)
+            cx = (
+                b_gt_boxes[gt_ind, 0] - self._default_boxes[db_ind, 0]
+            ) / self._default_boxes[db_ind, 3]
+            cy = (
+                b_gt_boxes[gt_ind, 1] - self._default_boxes[db_ind, 1]
+            ) / self._default_boxes[db_ind, 2]
+            h = torch.log(
+                b_gt_boxes[gt_ind, 2] / self._default_boxes[db_ind, 2]
+            )
+            w = torch.log(
+                b_gt_boxes[gt_ind, 3] / self._default_boxes[db_ind, 3]
+            )
+
+            b_gt_boxes = torch.stack([cx, cy, h, w], 0)
+            b_boxes = b_boxes[db_ind]
+
+            loss = nn.functional.smooth_l1_loss(b_boxes, b_gt_boxes)
+
+            all_losses.append(loss)
+
+        return torch.stack(all_losses).mean()
+
+
+class SSDClassCriterion(nn.Module):
+    def __init__(self, args):
+        super(SSDClassCriterion, self).__init__()
+
+        self._num_cls = args.num_cls
+
+    def forward(
+        self,
+        logits: list[torch.Tensor],
+        gt_labels: list[torch.Tensor],
+        pairs: list[torch.Tensor],
+        pos_inds: list[torch.Tensor],
+        neg_inds: list[torch.Tensor],
+    ):
+
+        all_losses = []
+        for b_logits, b_gt_labels, b_pairs, b_pos_ind, b_neg_ind in zip(
+            logits, gt_labels, pairs, pos_inds, neg_inds
+        ):
+            ind = b_pairs[:, 0]
+            gt_ind = b_pairs[:, 1]
+
+            # reorder ground-truth labels for positive objects
+            b_gt_labels = b_gt_labels[gt_ind]
+
+            # compute confidence score for all objects
+            b_conf = b_logits.softmax(-1)
+            # select confidence score of POSITIVE objects
+            b_pos_conf = b_conf[ind, gt_ind]
+            # select confidence score of NEGATIVE objects
+            b_neg_conf = b_conf[b_neg_ind, -1]
+            # then apply hard negative mining to balance number between pos and neg
+            preserved_neg = min(b_pos_ind.shape[0] * 3, b_neg_ind.shape[0])
+            b_neg_conf, _ = torch.sort(b_neg_conf, dim=-1, descending=True)
+            b_neg_conf = b_neg_conf[:preserved_neg]
+
+            loss = (b_pos_conf.log().sum() + b_neg_conf.log().sum()) * -1
+            all_losses.append(loss)
+
+        return torch.stack(all_losses).mean()
 
 
 if __name__ == "__main__":
