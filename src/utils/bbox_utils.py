@@ -1,12 +1,21 @@
+import math
+from typing import Iterable
+
 import torch
 import numpy as np
+
+from .misc import make_grid
 
 
 def from_np_to_tensor(func):
     def helper(*args, **kwargs):
-        if "bbox1" in kwargs.keys() and isinstance(kwargs["bbox1"], np.ndarray):
+        if "bbox1" in kwargs.keys() and isinstance(
+            kwargs["bbox1"], np.ndarray
+        ):
             kwargs["bbox1"] = torch.from_numpy(kwargs["bbox1"])
-        if "bbox2" in kwargs.keys() and isinstance(kwargs["bbox2"], np.ndarray):
+        if "bbox2" in kwargs.keys() and isinstance(
+            kwargs["bbox2"], np.ndarray
+        ):
             kwargs["bbox2"] = torch.from_numpy(kwargs["bbox2"])
         if "bbox_coord" in kwargs.keys() and isinstance(
             kwargs["bbox_coord"], np.ndarray
@@ -147,12 +156,12 @@ def complete_iou(pred_xyxy: torch.Tensor, gt_xyxy: torch.Tensor, epsilon=1e-6):
         4
         / pow(torch.pi, 2)
         * torch.pow(
-            torch.atan(gt_cxcyhw[..., 3] / gt_cxcyhw[..., 2].clamp(min=epsilon))[
-                None, :
-            ]
-            - torch.atan(pred_cxcyhw[..., 3] / pred_cxcyhw[..., 2].clamp(min=epsilon))[
-                :, None
-            ],
+            torch.atan(
+                gt_cxcyhw[..., 3] / gt_cxcyhw[..., 2].clamp(min=epsilon)
+            )[None, :]
+            - torch.atan(
+                pred_cxcyhw[..., 3] / pred_cxcyhw[..., 2].clamp(min=epsilon)
+            )[:, None],
             2,
         )
     )
@@ -174,8 +183,12 @@ def get_iou(bbox1, bbox2, epsilon=1e-6):
     inter_wh = torch.clamp(inter_maxs - inter_mins, min=0)
     inter_area = inter_wh[..., 0] * inter_wh[..., 1]
 
-    bbox1_area = (bbox1[..., 2] - bbox1[..., 0]) * (bbox1[..., 3] - bbox1[..., 1])
-    bbox2_area = (bbox2[..., 2] - bbox2[..., 0]) * (bbox2[..., 3] - bbox2[..., 1])
+    bbox1_area = (bbox1[..., 2] - bbox1[..., 0]) * (
+        bbox1[..., 3] - bbox1[..., 1]
+    )
+    bbox2_area = (bbox2[..., 2] - bbox2[..., 0]) * (
+        bbox2[..., 3] - bbox2[..., 1]
+    )
 
     union_area = bbox1_area[:, None] + bbox2_area[None, :] - inter_area
 
@@ -195,6 +208,39 @@ def filter_flat_box(boxes, epsilon=1e-6):
     filtered_boxes = boxes[boxes_zero]
 
     return filtered_boxes
+
+
+def gen_default_boxes(
+    shapes: Iterable[int],
+    scales: Iterable[float],
+    aspect_ratios: Iterable[float],
+):
+    default_boxes = []
+
+    for ind, (shape, ar) in enumerate(zip(shapes, aspect_ratios)):
+        num_boxes = (len(ar) + 1) * 2
+        centers = (
+            make_grid(height=shape, width=shape, bias=0.5, norm=True)
+            .unsqueeze(2)
+            .repeat(1, 1, num_boxes, 1)
+        )
+
+        scale = scales[ind]
+        g_scale = math.sqrt(scales[ind] * scales[ind + 1])
+
+        hw_pairs = [(scale, scale), (g_scale, g_scale)]
+        for ar_ in ar:
+            sqrt_ar = math.sqrt(ar_)
+            hw_pairs.append((scale * sqrt_ar, scale / sqrt_ar))
+            hw_pairs.append((scale / sqrt_ar, scale * sqrt_ar))
+        hw_pairs = torch.tensor(hw_pairs)[None, None, :, :].repeat(
+            shape, shape, 1, 1
+        )
+
+        # shape of elements in default_boxes is (bs, h, w, boxes, 4)
+        default_boxes.append(torch.cat([centers, hw_pairs], -1).unsqueeze(0))
+
+    return default_boxes
 
 
 if __name__ == "__main__":

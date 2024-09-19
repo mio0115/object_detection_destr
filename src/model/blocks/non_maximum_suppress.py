@@ -5,7 +5,7 @@ import torch
 from torch import nn
 
 from ...utils.misc import make_grid
-from ...utils.bbox_utils import from_cxcyhw_to_xyxy, get_iou
+from ...utils.bbox_utils import from_cxcyhw_to_xyxy, get_iou, gen_default_boxes
 
 
 class NonMaximumSuppress(nn.Module):
@@ -29,7 +29,7 @@ class NonMaximumSuppress(nn.Module):
         ), "length of scale should equal to length of aspect ratio + 1"
 
         # the shape is specified when we use vgg16 as backbone, need to change if we swap it out
-        self._default_boxes = self._gen_default_boxes(
+        self._default_boxes = gen_default_boxes(
             shapes=[38, 19, 10, 5, 3, 1],
             scales=self._scale,
             aspect_ratios=self._aspect_ratios,
@@ -83,41 +83,6 @@ class NonMaximumSuppress(nn.Module):
             sel_conf.append(tmp_conf[iou_masks])
 
         return sel_boxes, sel_conf
-
-    def _gen_default_boxes(
-        self,
-        shapes: Iterable[int],
-        scales: Iterable[float],
-        aspect_ratios: Iterable[float],
-    ):
-        default_boxes = []
-
-        for ind, (shape, ar) in enumerate(zip(shapes, aspect_ratios)):
-            num_boxes = (len(ar) + 1) * 2
-            centers = (
-                make_grid(height=shape, width=shape, bias=0.5, norm=True)
-                .unsqueeze(2)
-                .repeat(1, 1, num_boxes, 1)
-            )
-
-            scale = scales[ind]
-            g_scale = math.sqrt(scales[ind] * scales[ind + 1])
-
-            hw_pairs = [(scale, scale), (g_scale, g_scale)]
-            for ar_ in ar:
-                sqrt_ar = math.sqrt(ar_)
-                hw_pairs.append((scale * sqrt_ar, scale / sqrt_ar))
-                hw_pairs.append((scale / sqrt_ar, scale * sqrt_ar))
-            hw_pairs = torch.tensor(hw_pairs)[None, None, :, :].repeat(
-                shape, shape, 1, 1
-            )
-
-            # shape of elements in default_boxes is (bs, h, w, boxes, 4)
-            default_boxes.append(
-                torch.cat([centers, hw_pairs], -1).unsqueeze(0)
-            )
-
-        return default_boxes
 
 
 def build_nms(args):
