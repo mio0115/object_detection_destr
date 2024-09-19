@@ -38,7 +38,7 @@ class NonMaximumSuppress(nn.Module):
     def forward(self, features: list[torch.Tensor]):
         # shape of features[0]: (bs, h, w, boxes, d_model)
 
-        pred_boxes = []
+        pred_boxes, pred_conf = [], []
         device = features[0].device
 
         for def_box, ft in zip(self._default_boxes, features):
@@ -59,32 +59,30 @@ class NonMaximumSuppress(nn.Module):
             )
 
             pred_boxes.append(box_with_conf)
+            pred_conf.append(conf.flatten(1, 3))
         all_boxes_with_conf = torch.cat(pred_boxes, 1)
+        all_conf = torch.cat(pred_conf, 1)
 
-        all_boxes = []
-        for b_bwc in all_boxes_with_conf:
+        sel_boxes, sel_conf = [], []
+        for b_bwc, b_c in zip(all_boxes_with_conf, all_conf):
             conf, ind = torch.sort(b_bwc[..., -1], descending=True)
             # drop indeces whose confidence lower than threshold(0.5)
             fil_ind = ind[conf >= 0.5]
             # reorder boxes based on fil_ind and drop their conf
             boxes_cxcyhw = b_bwc[fil_ind, :-1]
             boxes_xyxy = from_cxcyhw_to_xyxy(boxes_cxcyhw)
+            tmp_conf = b_c[fil_ind]
 
             # drop the iou about self
-            ious = get_iou(bbox1=boxes_xyxy, bbox2=boxes_xyxy) - torch.eye(
-                n=boxes_xyxy.size(0), device=device
+            iou_masks = (
+                get_iou(bbox1=boxes_xyxy, bbox2=boxes_xyxy).triu(1) < 0.5
             )
+            iou_masks = iou_masks.all(1)
 
-            num_boxes, _ = boxes_xyxy.shape
-            preserved_mask = torch.ones(
-                size=num_boxes, dtype=torch.bool, device=device
-            )
-            for ind, iou in enumerate(ious):
-                preserved_mask &= iou[ind:] < 0.5
+            sel_boxes.append(boxes_cxcyhw[iou_masks])
+            sel_conf.append(tmp_conf[iou_masks])
 
-            all_boxes.append(boxes_cxcyhw[preserved_mask])
-
-        return all_boxes
+        return sel_boxes, sel_conf
 
     def _gen_default_boxes(
         self,
@@ -98,8 +96,8 @@ class NonMaximumSuppress(nn.Module):
             num_boxes = (len(ar) + 1) * 2
             centers = (
                 make_grid(height=shape, width=shape, bias=0.5, norm=True)
-                .unsqueeze(0)
-                .repeat(num_boxes, 1, 1, 1)
+                .unsqueeze(2)
+                .repeat(1, 1, num_boxes, 1)
             )
 
             scale = scales[ind]
@@ -110,10 +108,11 @@ class NonMaximumSuppress(nn.Module):
                 sqrt_ar = math.sqrt(ar_)
                 hw_pairs.append((scale * sqrt_ar, scale / sqrt_ar))
                 hw_pairs.append((scale / sqrt_ar, scale * sqrt_ar))
-            hw_pairs = torch.tensor(hw_pairs)[:, None, None, :].repeat(
-                1, shape, shape, 1
+            hw_pairs = torch.tensor(hw_pairs)[None, None, :, :].repeat(
+                shape, shape, 1, 1
             )
 
+            # shape of elements in default_boxes is (bs, h, w, boxes, 4)
             default_boxes.append(
                 torch.cat([centers, hw_pairs], -1).unsqueeze(0)
             )
@@ -150,4 +149,15 @@ if __name__ == "__main__":
             dtype=torch.float32,
         ),
         aspect_ratios=[[2], [2, 3], [2, 3], [2, 3], [2], [2]],
+    )
+    [38, 19, 10, 5, 3, 1]
+    nms(
+        [
+            torch.rand((2, 38, 38, 4, 4 + 20 + 1)),
+            torch.rand((2, 19, 19, 6, 4 + 20 + 1)),
+            torch.rand((2, 10, 10, 6, 4 + 20 + 1)),
+            torch.rand((2, 5, 5, 6, 4 + 20 + 1)),
+            torch.rand((2, 3, 3, 4, 4 + 20 + 1)),
+            torch.rand((2, 1, 1, 4, 4 + 20 + 1)),
+        ]
     )
