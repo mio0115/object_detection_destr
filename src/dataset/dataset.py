@@ -1,5 +1,7 @@
+from typing import Union, Callable
+
 import torch
-import torchvision as tv
+from torchvision import datasets as tv_ds
 from torchvision.tv_tensors import BoundingBoxes, BoundingBoxFormat
 from torchvision.transforms import ToTensor
 
@@ -7,7 +9,7 @@ from ..utils.bbox_utils import from_xywh_to_xyxy, filter_flat_box
 from .transforms import TransformTypes
 
 
-class WiderFace(tv.datasets.WIDERFace):
+class WiderFace(tv_ds.WIDERFace):
     def __init__(
         self,
         root,
@@ -60,6 +62,63 @@ class WiderFace(tv.datasets.WIDERFace):
         new_labels = torch.zeros(size=(new_bboxes.size(0),)).long()
 
         return new_img, {"boxes": new_bboxes, "labels": new_labels}
+
+
+class VOCDetection(tv_ds.VOCDetection):
+    def __init__(self, transforms, augment_factor, *args, **kwargs):
+        super(VOCDetection, self).__init__(*args, **kwargs)
+        self._transforms = transforms
+        self._augment_factor = augment_factor
+
+        self._map_class = {
+            "person": 0,
+            "bird": 1,
+            "cat": 2,
+            "cow": 3,
+            "dog": 4,
+            "horse": 5,
+            "sheep": 6,
+            "aeroplane": 7,
+            "bicycle": 8,
+            "boat": 9,
+            "bus": 10,
+            "car": 11,
+            "motorbike": 12,
+            "train": 13,
+            "bottle": 14,
+            "chair": 15,
+            "dining table": 16,
+            "potted plant": 17,
+            "sofa": 18,
+            "tv/monitor": 19,
+        }
+
+    def __len__(self) -> int:
+        return super().__len__() * self._augment_factor
+
+    def __getitem__(self, index: int) -> torch.Tuple[torch.Any]:
+        img, targets = super().__getitem__(index % super().__len__())
+
+        objects = targets["annotation"]["object"]
+        labels, boxes = [], []
+        for obj in objects:
+            labels.append(self._map_class[obj["name"][0]])
+            boxes.append([int(coord[0]) for coord in obj["bndbox"].values()])
+
+        shape = [int(l[0]) for l in targets["annotation"]["size"].values()]
+
+        labels = torch.tensor(labels)
+        boxes = torch.tensor(boxes)
+        boxes = BoundingBoxes(
+            boxes,
+            format=BoundingBoxFormat.XYXY,
+            canvas_size=shape[::-1],
+            dtype=torch.float32,
+        )
+
+        tr_img, tr_boxes, tr_labels = self._transforms(img, boxes, labels)
+
+        return {"image": tr_img, "boxes": tr_boxes, "labels": tr_labels}
 
 
 def widerface_collate_fn(batch):

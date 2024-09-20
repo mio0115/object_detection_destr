@@ -1,10 +1,17 @@
 import math
+from enum import Enum
 from typing import Iterable
 
 import torch
 import numpy as np
 
 from .misc import make_grid
+
+
+class BBoxType(Enum):
+    CXCYHW = "cxcyhw"
+    XYXY = "xyxy"
+    XYHW = "xyhw"
 
 
 def from_np_to_tensor(func):
@@ -241,6 +248,19 @@ def gen_default_boxes(
         default_boxes.append(torch.cat([centers, hw_pairs], -1).unsqueeze(0))
 
     return default_boxes
+
+
+def update_coord_new_boundary(boxes, new_boundary: tuple[int, int, int, int]):
+    boxes_xyxy = from_cxcyhw_to_xyxy(boxes)
+    new_boxes = torch.stack(
+        [
+            max(boxes_xyxy[..., 0], new_boundary[0]),
+            max(boxes_xyxy[..., 1], new_boundary[1]),
+            min(boxes_xyxy[..., 2], new_boundary[2]),
+            min(boxes_xyxy[..., 3], new_boundary[3]),
+        ]
+    )
+    return from_xyxy_to_cxcyhw(new_boxes)
 
 
 if __name__ == "__main__":
