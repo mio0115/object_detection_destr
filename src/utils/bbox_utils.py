@@ -16,13 +16,9 @@ class BBoxType(Enum):
 
 def from_np_to_tensor(func):
     def helper(*args, **kwargs):
-        if "bbox1" in kwargs.keys() and isinstance(
-            kwargs["bbox1"], np.ndarray
-        ):
+        if "bbox1" in kwargs.keys() and isinstance(kwargs["bbox1"], np.ndarray):
             kwargs["bbox1"] = torch.from_numpy(kwargs["bbox1"])
-        if "bbox2" in kwargs.keys() and isinstance(
-            kwargs["bbox2"], np.ndarray
-        ):
+        if "bbox2" in kwargs.keys() and isinstance(kwargs["bbox2"], np.ndarray):
             kwargs["bbox2"] = torch.from_numpy(kwargs["bbox2"])
         if "bbox_coord" in kwargs.keys() and isinstance(
             kwargs["bbox_coord"], np.ndarray
@@ -35,7 +31,9 @@ def from_np_to_tensor(func):
 
 
 @from_np_to_tensor
-def from_cxcyhw_to_xyxy(bbox_coord: torch.Tensor) -> torch.Tensor:
+def from_cxcyhw_to_xyxy(
+    bbox_coord: torch.Tensor, min_val: float = 0, max_val: float = 1
+) -> torch.Tensor:
     """
     Transform the bbox coordinates
     from (center_x, center_y, height, width)
@@ -49,13 +47,15 @@ def from_cxcyhw_to_xyxy(bbox_coord: torch.Tensor) -> torch.Tensor:
     Returns:
         torch.Tensor: Coordinates of the boundary box. (xyxy)
     """
+    if bbox_coord.shape[0] == 0:
+        return bbox_coord
 
     new_bbox_coord = torch.stack(
         [
-            torch.clip(bbox_coord[..., 0] - bbox_coord[..., 3] / 2, min=0),
-            torch.clip(bbox_coord[..., 1] - bbox_coord[..., 2] / 2, min=0),
-            torch.clip(bbox_coord[..., 0] + bbox_coord[..., 3] / 2, max=1),
-            torch.clip(bbox_coord[..., 1] + bbox_coord[..., 2] / 2, max=1),
+            torch.clip(bbox_coord[..., 0] - bbox_coord[..., 3] / 2, min=min_val),
+            torch.clip(bbox_coord[..., 1] - bbox_coord[..., 2] / 2, min=min_val),
+            torch.clip(bbox_coord[..., 0] + bbox_coord[..., 3] / 2, max=max_val),
+            torch.clip(bbox_coord[..., 1] + bbox_coord[..., 2] / 2, max=max_val),
         ],
         dim=-1,
     )
@@ -64,7 +64,9 @@ def from_cxcyhw_to_xyxy(bbox_coord: torch.Tensor) -> torch.Tensor:
 
 
 @from_np_to_tensor
-def from_xyxy_to_cxcyhw(bbox_coord: torch.Tensor) -> torch.Tensor:
+def from_xyxy_to_cxcyhw(
+    bbox_coord: torch.Tensor, min_val: float = 0, max_val: float = 1
+) -> torch.Tensor:
     """
     Transform the bbox coordinates
     from (min_x, min_y, max_x, max_y)
@@ -77,13 +79,23 @@ def from_xyxy_to_cxcyhw(bbox_coord: torch.Tensor) -> torch.Tensor:
     Returns:
         torch.Tensor: Coordinates of the boundary box. (xyxy)
     """
+    if bbox_coord.shape[0] == 0:
+        return bbox_coord
 
     new_bbox_coord = torch.stack(
         [
-            (bbox_coord[..., 0] + bbox_coord[..., 2]) / 2,
-            (bbox_coord[..., 1] + bbox_coord[..., 3]) / 2,
-            bbox_coord[..., 3] - bbox_coord[..., 1],
-            bbox_coord[..., 2] - bbox_coord[..., 0],
+            torch.clip(
+                (bbox_coord[..., 0] + bbox_coord[..., 2]) / 2, min=min_val, max=max_val
+            ),
+            torch.clip(
+                (bbox_coord[..., 1] + bbox_coord[..., 3]) / 2, min=min_val, max=max_val
+            ),
+            torch.clip(
+                bbox_coord[..., 3] - bbox_coord[..., 1], min=min_val, max=max_val
+            ),
+            torch.clip(
+                bbox_coord[..., 2] - bbox_coord[..., 0], min=min_val, max=max_val
+            ),
         ],
         dim=-1,
     )
@@ -92,7 +104,9 @@ def from_xyxy_to_cxcyhw(bbox_coord: torch.Tensor) -> torch.Tensor:
 
 
 @from_np_to_tensor
-def from_xywh_to_xyxy(bbox_coord: torch.Tensor) -> torch.Tensor:
+def from_xywh_to_xyxy(
+    bbox_coord: torch.Tensor, min_val: float = 0, max_val: float = 1
+) -> torch.Tensor:
     """
     Transform the bbox coordinates
     from (min_x, min_y, width, height)
@@ -105,14 +119,16 @@ def from_xywh_to_xyxy(bbox_coord: torch.Tensor) -> torch.Tensor:
     Returns:
         torch.Tensor: Coordinates of the boundary box. (xyxy)
     """
+    if bbox_coord.shape[0] == 0:
+        return bbox_coord
 
     new_bbox_coord = torch.concat(
         [
             bbox_coord[..., :2],
             torch.stack(
                 [
-                    bbox_coord[..., 0] + bbox_coord[..., 2],
-                    bbox_coord[..., 1] + bbox_coord[..., 3],
+                    torch.clip(bbox_coord[..., 0] + bbox_coord[..., 2], max=max_val),
+                    torch.clip(bbox_coord[..., 1] + bbox_coord[..., 3], max=max_val),
                 ],
                 dim=-1,
             ),
@@ -163,12 +179,12 @@ def complete_iou(pred_xyxy: torch.Tensor, gt_xyxy: torch.Tensor, epsilon=1e-6):
         4
         / pow(torch.pi, 2)
         * torch.pow(
-            torch.atan(
-                gt_cxcyhw[..., 3] / gt_cxcyhw[..., 2].clamp(min=epsilon)
-            )[None, :]
-            - torch.atan(
-                pred_cxcyhw[..., 3] / pred_cxcyhw[..., 2].clamp(min=epsilon)
-            )[:, None],
+            torch.atan(gt_cxcyhw[..., 3] / gt_cxcyhw[..., 2].clamp(min=epsilon))[
+                None, :
+            ]
+            - torch.atan(pred_cxcyhw[..., 3] / pred_cxcyhw[..., 2].clamp(min=epsilon))[
+                :, None
+            ],
             2,
         )
     )
@@ -190,12 +206,8 @@ def get_iou(bbox1, bbox2, epsilon=1e-6):
     inter_wh = torch.clamp(inter_maxs - inter_mins, min=0)
     inter_area = inter_wh[..., 0] * inter_wh[..., 1]
 
-    bbox1_area = (bbox1[..., 2] - bbox1[..., 0]) * (
-        bbox1[..., 3] - bbox1[..., 1]
-    )
-    bbox2_area = (bbox2[..., 2] - bbox2[..., 0]) * (
-        bbox2[..., 3] - bbox2[..., 1]
-    )
+    bbox1_area = (bbox1[..., 2] - bbox1[..., 0]) * (bbox1[..., 3] - bbox1[..., 1])
+    bbox2_area = (bbox2[..., 2] - bbox2[..., 0]) * (bbox2[..., 3] - bbox2[..., 1])
 
     union_area = bbox1_area[:, None] + bbox2_area[None, :] - inter_area
 
@@ -240,9 +252,7 @@ def gen_default_boxes(
             sqrt_ar = math.sqrt(ar_)
             hw_pairs.append((scale * sqrt_ar, scale / sqrt_ar))
             hw_pairs.append((scale / sqrt_ar, scale * sqrt_ar))
-        hw_pairs = torch.tensor(hw_pairs)[None, None, :, :].repeat(
-            shape, shape, 1, 1
-        )
+        hw_pairs = torch.tensor(hw_pairs)[None, None, :, :].repeat(shape, shape, 1, 1)
 
         # shape of elements in default_boxes is (bs, h, w, boxes, 4)
         default_boxes.append(torch.cat([centers, hw_pairs], -1).unsqueeze(0))
@@ -250,17 +260,55 @@ def gen_default_boxes(
     return default_boxes
 
 
-def update_coord_new_boundary(boxes, new_boundary: tuple[int, int, int, int]):
-    boxes_xyxy = from_cxcyhw_to_xyxy(boxes)
+def update_coord_new_boundary(
+    boxes,
+    new_boundary: tuple[int, int, int, int],
+    origin_boundary: tuple[int, int],
+):
+    if boxes.shape[0] == 0:
+        return boxes
+    boxes_xyxy = torch.stack(
+        [
+            torch.clip(boxes[..., 0] - boxes[..., 3] / 2, min=0),
+            torch.clip(boxes[..., 1] - boxes[..., 2] / 2, min=0),
+            torch.clip(boxes[..., 0] + boxes[..., 3] / 2, max=origin_boundary[0]),
+            torch.clip(boxes[..., 1] + boxes[..., 2] / 2, max=origin_boundary[1]),
+        ],
+        dim=-1,
+    )
+
     new_boxes = torch.stack(
         [
-            max(boxes_xyxy[..., 0], new_boundary[0]),
-            max(boxes_xyxy[..., 1], new_boundary[1]),
-            min(boxes_xyxy[..., 2], new_boundary[2]),
-            min(boxes_xyxy[..., 3], new_boundary[3]),
-        ]
+            boxes_xyxy[..., 0].clamp(max=new_boundary[0]),
+            boxes_xyxy[..., 1].clamp(max=new_boundary[1]),
+            boxes_xyxy[..., 2].clamp(min=new_boundary[2]),
+            boxes_xyxy[..., 3].clamp(min=new_boundary[3]),
+        ],
+        -1,
     )
-    return from_xyxy_to_cxcyhw(new_boxes)
+
+    boxes_cxcyhw = torch.stack(
+        [
+            torch.clip(
+                (new_boxes[..., 0] + new_boxes[..., 2]) / 2,
+                min=0,
+                max=origin_boundary[0],
+            ),
+            torch.clip(
+                (new_boxes[..., 1] + new_boxes[..., 3]) / 2,
+                min=0,
+                max=origin_boundary[1],
+            ),
+            torch.clip(
+                new_boxes[..., 3] - new_boxes[..., 1], min=0, max=origin_boundary[0]
+            ),
+            torch.clip(
+                new_boxes[..., 2] - new_boxes[..., 0], min=0, max=origin_boundary[1]
+            ),
+        ],
+        dim=-1,
+    )
+    return boxes_cxcyhw
 
 
 if __name__ == "__main__":
