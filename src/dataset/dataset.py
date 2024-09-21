@@ -118,10 +118,18 @@ class VOCDetection(tv_ds.VOCDetection):
 
         tr_img, tr_boxes, tr_labels = self._transforms(img, boxes, labels)
 
-        return {"image": tr_img, "boxes": tr_boxes, "labels": tr_labels}
+        return tr_img, {"boxes": tr_boxes, "labels": tr_labels}
 
 
 def widerface_collate_fn(batch):
+    img, targets = zip(*batch)
+
+    img = torch.stack(img)
+
+    return img, targets
+
+
+def voc_collate_fn(batch):
     img, targets = zip(*batch)
 
     img = torch.stack(img)
