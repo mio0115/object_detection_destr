@@ -12,35 +12,39 @@ class SingleShotDetector(nn.Module):
 
         self._backbone = backbone
         self._feature_maps = self._build_feature_maps(
-            embed_dim=[1024, 512, 256, 256, 256],
+            embed_dim=[512, 1024, 512, 256, 256, 256],
             hidden_dim=[1024, 256, 128, 128, 128],
         )
-        self._detectors = self._build_detectors(
+        self._build_detectors(
             input_dim=[512, 1024, 512, 256, 256, 256],
             default_boxes=self._num_boxes,
         )
 
-    def _build_detectors(
-        self, input_dim: list[int], default_boxes: list[int]
-    ) -> nn.ModuleList:
-        detectors = []
+    def _build_detectors(self, input_dim: list[int], default_boxes: list[int]) -> None:
+        bbox_detectors, conf_detectors = [], []
 
         for in_channel, num_boxes in zip(input_dim, default_boxes):
             bbox_embed = nn.Conv2d(
                 in_channels=in_channel,
                 out_channels=num_boxes * 4,
                 kernel_size=3,
-                padding="same",
+                padding=1,
             )
             conf_embed = nn.Conv2d(
                 in_channels=in_channel,
                 out_channels=num_boxes * (self._num_class + 1),
                 kernel_size=3,
-                padding="same",
+                padding=1,
             )
-            detectors.append([bbox_embed, conf_embed])
+            bbox_detectors.append(bbox_embed)
+            conf_detectors.append(conf_embed)
 
-        return nn.ModuleList(detectors)
+        self._detectors = nn.ModuleDict(
+            {
+                "boxes": nn.ModuleList(bbox_detectors),
+                "conf": nn.ModuleList(conf_detectors),
+            }
+        )
 
     def _build_feature_maps(
         self, embed_dim: list[int], hidden_dim: list[int]
@@ -64,7 +68,7 @@ class SingleShotDetector(nn.Module):
                         out_channels=out_channels,
                         kernel_size=3,
                         stride=2,
-                        padding="same",
+                        padding=1,
                         bias=False,
                     ),
                     nn.BatchNorm2d(out_channels),
@@ -103,16 +107,18 @@ class SingleShotDetector(nn.Module):
             features.append(x)
 
         outputs = {"boxes": [], "conf": []}
-        for ft, det, num_boxes in zip(features, self._detectors, self._num_boxes):
+        for ft, box_det, conf_det, num_boxes in zip(
+            features, self._detectors["boxes"], self._detectors["conf"], self._num_boxes
+        ):
             bs, _, h, w = ft.shape
             bbox_embed = (
-                det[0](ft)
+                box_det(ft)
                 .reshape(bs, num_boxes, -1, h, w)
                 .permute(0, 3, 4, 1, 2)
                 .contiguous()
             )
             conf_embed = (
-                det[1](ft)
+                conf_det(ft)
                 .reshape(bs, num_boxes, -1, h, w)
                 .permute(0, 3, 4, 1, 2)
                 .contiguous()
@@ -133,10 +139,14 @@ class Backbone(nn.Module):
         super().__init__(*args, **kwargs)
 
         vgg16_model = tv_models.vgg16(weights=tv_models.VGG16_Weights.DEFAULT)
-        self._model = nn.ModuleList(*list(vgg16_model.features)[:23])
+        self._layers = nn.ModuleList(list(vgg16_model.features)[:23])
 
     def forward(self, inputs):
-        return self._model(inputs)
+        x = inputs
+        for layer in self._layers:
+            x = layer(x)
+
+        return x
 
 
 def build_model(args):
