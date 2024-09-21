@@ -7,7 +7,7 @@ class SingleShotDetector(nn.Module):
     def __init__(self, backbone: nn.Module, num_class: int):
         super().__init__()
 
-        self._num_class = num_class  # exclude dummy class for background
+        self._num_class = num_class + 1  # exclude dummy class for background
         self._num_boxes = [4, 6, 6, 6, 4, 4]
 
         self._backbone = backbone
@@ -103,9 +103,7 @@ class SingleShotDetector(nn.Module):
             features.append(x)
 
         outputs = {"boxes": [], "conf": []}
-        for ft, det, num_boxes in zip(
-            features, self._detectors, self._num_boxes
-        ):
+        for ft, det, num_boxes in zip(features, self._detectors, self._num_boxes):
             bs, _, h, w = ft.shape
             bbox_embed = (
                 det[0](ft)
