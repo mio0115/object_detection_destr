@@ -212,7 +212,7 @@ if __name__ == "__main__":
         args,
         model=model,
         criterion=criterion,
-        metric=metric,
+        # metric=metric,
         optimizer=optim,
         train_loader=train_dl,
         valid_loader=valid_dl,
