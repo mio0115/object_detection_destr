@@ -1,7 +1,6 @@
 from enum import Enum
 from typing import Optional
 import math
-import random
 
 import torch
 import numpy as np
@@ -91,27 +90,26 @@ class RandomPatchWithIoUBound(nn.Module):
                 # get the range of new image
                 scale = np.random.uniform(0.1, 1)
                 ar = np.random.uniform(0.5, 2)
-                new_hw = (
-                    min(int(math.sqrt(scale / ar)) * h, h),
-                    min(int(math.sqrt(scale * ar)) * w, w),
-                )  # height, width
+
+                patch_h = min(int(np.floor(np.sqrt(scale / ar)) * h), h)
+                patch_w = min(int(np.floor(np.sqrt(scale * ar)) * w), w)
 
                 # compute the coordinates on the original image
-                min_x = np.random.randint(0, w - new_hw[1])
-                min_y = np.random.randint(0, h - new_hw[0])
-                max_x = min_x + new_hw[1]
-                max_y = min_y + new_hw[0]
+                min_x = np.random.randint(0, w - patch_w)
+                min_y = np.random.randint(0, h - patch_h)
+                max_x = min_x + patch_h
+                max_y = min_y + patch_w
 
                 # drop objects not in the new image
                 x_mask = (boxes[..., 0] >= min_x) & (boxes[..., 0] <= max_x)
                 y_mask = (boxes[..., 1] >= min_y) & (boxes[..., 1] <= max_y)
-                in_mask = x_mask & y_mask
-                if np.count_nonzero(in_mask) >= min_num_boxes:
+                in_patch = x_mask & y_mask
+                if np.count_nonzero(in_patch) >= min_num_boxes:
                     in_boxes = update_coord_new_boundary(
-                        boxes[in_mask],
+                        boxes[in_patch],
                         new_boundary=(min_x, min_y, max_x, max_y),
                     )
-                    in_labels = labels[in_mask]
+                    in_labels = labels[in_patch]
                     new_img = img[:, min_y:max_y, min_x:max_x]
 
                     return new_img, in_boxes, in_labels
@@ -133,6 +131,7 @@ def build_transform_ssd(trans_type: TransformTypes):
                 ),
                 RandomPatchWithIoUBound(),
                 TransBoxCoord(norm=True),
+                v2.Resize(size=(300, 300)),
                 v2.Normalize(
                     mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]
                 ),
@@ -146,6 +145,7 @@ def build_transform_ssd(trans_type: TransformTypes):
                 TransBoxCoord(
                     norm=True, from_type=BBoxType.XYXY, to_type=BBoxType.CXCYHW
                 ),
+                v2.Resize(size=(300, 300)),
                 v2.Normalize(
                     mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]
                 ),
