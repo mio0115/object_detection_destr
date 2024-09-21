@@ -16,6 +16,8 @@ RESUME_FROM="model_weights.pth"
 DEVICE="cuda"
 SAVE_AS="model.weights.pth"
 CLS_NUM=20
+SCALE_MIN=0.2
+SCALE_MAX=0.9
 RESUME=""
 
 while [[ "$#" -gt 0 ]]; do
@@ -33,6 +35,8 @@ while [[ "$#" -gt 0 ]]; do
         --device) DEVICE="$2"; shift;;
         --save_as) SAVE_AS="$2"; shift;;
         --class_number) CLS_NUM="$2"; shift;;
+        --scale_min) SCALE_MIN="$2"; shift;;
+        --scale_max) SCALE_MAX="$2"; shift;;
         -cls) CLS_NUM="$2"; shift;;
         *) echo "Unknown parameter passed: $1"; exit 1 ;;
     esac
@@ -68,6 +72,8 @@ docker run --rm -it \
             --device=${DEVICE} \
             --save_as=${SAVE_AS} \
             --class_number=${CLS_NUM} \
+            --scale_min=${SCALE_MIN} \
+            --scale_max=${SCALE_MAX} \
             ${RESTORE_MODEL}
 
 if [ $? -ne 0 ]; then

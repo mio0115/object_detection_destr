@@ -210,9 +210,11 @@ def get_parser_ssd():
         "-cls",
         "--class_number",
         type=int,
-        default=2,
+        default=20,
         dest="num_cls",
         help="The number of classes to classify in images",
     )
+    parser.add_argument("--scale_min", type=float, default=0.2, dest="scale_min")
+    parser.add_argument("--scale_max", type=float, default=0.9, dest="scale_max")
 
     return parser
