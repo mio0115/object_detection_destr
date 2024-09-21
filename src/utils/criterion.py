@@ -35,9 +35,7 @@ class SetCriterion(nn.Module):
         mask[pred_idx] = False
 
         remaining_objects = pred_logits[mask]
-        ordered_logits = torch.concat(
-            [selected_objects, remaining_objects], dim=0
-        )
+        ordered_logits = torch.concat([selected_objects, remaining_objects], dim=0)
 
         objects_num = pred_logits.size(0)
         dummy_class = torch.ones(
@@ -69,12 +67,8 @@ class SetCriterion(nn.Module):
                 self._get_class_loss(b_output_cls, b_idx[0], gt_class)
             )
             if b_idx[0].size(0) > 0:
-                losses["bbox"].append(
-                    self._get_bbox_loss(output_pred_boxes, gt_boxes)
-                )
-                losses["ciou"].append(
-                    self._get_ciou_loss(output_pred_boxes, gt_boxes)
-                )
+                losses["bbox"].append(self._get_bbox_loss(output_pred_boxes, gt_boxes))
+                losses["ciou"].append(self._get_ciou_loss(output_pred_boxes, gt_boxes))
 
         # average the batch
         for key, val in losses.items():
@@ -98,9 +92,7 @@ class CompleteIOULoss(nn.Module):
 class MeanAveragePrecision(nn.Module):
     # consider the case IoU >= 0.5 first
 
-    def __init__(
-        self, num_cls: int = 1, threshold: float = 0.5, num_pred: int = 300
-    ):
+    def __init__(self, num_cls: int = 1, threshold: float = 0.5, num_pred: int = 300):
         super(MeanAveragePrecision, self).__init__()
 
         self._num_cls = num_cls
@@ -205,16 +197,14 @@ class SSDCriterion(nn.Module):
     def __init__(
         self,
         matcher: nn.Module,
-        num_class: int,
         loss_fns: dict[str : nn.Module],
         loss_coef: float,
         *args,
-        **kwargs
+        **kwargs,
     ):
         super(SSDCriterion, self).__init__(*args, **kwargs)
 
         self._matcher = matcher
-        self._num_cls = num_class
         self._loss_fns = loss_fns
         self._loss_coef = loss_coef
 
@@ -229,12 +219,10 @@ class SSDCriterion(nn.Module):
             outputs["boxes"], targets["boxes"], pairs
         ).mean()
         class_loss = self._loss_fns["class"](
-            outputs["class"], targets["labels"], pairs, pos_inds, neg_inds
+            outputs["conf"], targets["labels"], pairs, pos_inds, neg_inds
         ).mean()
 
-        return (
-            self._loss_coef * class_loss + (1 - self._loss_coef) * local_loss
-        )
+        return self._loss_coef * class_loss + (1 - self._loss_coef) * local_loss
 
 
 class SSDLocalCriterion(nn.Module):
@@ -250,16 +238,20 @@ class SSDLocalCriterion(nn.Module):
             device=args.device,
         )
         aspect_ratios = [[2], [2, 3], [2, 3], [2, 3], [2], [2]]
-        self._default_boxes = gen_default_boxes(
-            shapes=[38, 19, 10, 5, 3, 1],
-            scales=scales,
-            aspect_ratios=aspect_ratios,
+        self._default_boxes = to_device(
+            gen_default_boxes(
+                shapes=[37, 19, 10, 5, 3, 1],
+                scales=scales,
+                aspect_ratios=aspect_ratios,
+            ),
+            args.device,
         )
         # new shape of default_boxes: (bs, seq_len, 4)
         self._default_boxes = torch.cat(
             [dboxes.flatten(1, 3) for dboxes in self._default_boxes], 1
-        )
+        ).squeeze(0)
 
+    # ruff
     def forward(
         self,
         boxes: list[torch.Tensor],
@@ -270,29 +262,29 @@ class SSDLocalCriterion(nn.Module):
         # format of gt_boxes: xyxy
         # pairs: (pred_ind, gt_ind)
 
+        flatten_boxes = []
+        for box_coords in boxes:
+            flatten_boxes.append(box_coords.flatten(1, 3))
+        flatten_boxes = torch.cat(flatten_boxes, 1)
+
         all_losses = []
-        for b_pairs, b_boxes, b_gt_boxes in zip(pairs, boxes, gt_boxes):
+        for b_pairs, b_boxes, b_gt_boxes in zip(pairs, flatten_boxes, gt_boxes):
             db_ind = b_pairs[:, 0]  # indices for default boxes
             gt_ind = b_pairs[:, 1]  # indices for ground-truth
-            # TODO: check the format of coord in dataset
-            b_gt_boxes = from_xyxy_to_cxcyhw(b_gt_boxes)
+
             cx = (
                 b_gt_boxes[gt_ind, 0] - self._default_boxes[db_ind, 0]
             ) / self._default_boxes[db_ind, 3]
             cy = (
                 b_gt_boxes[gt_ind, 1] - self._default_boxes[db_ind, 1]
             ) / self._default_boxes[db_ind, 2]
-            h = torch.log(
-                b_gt_boxes[gt_ind, 2] / self._default_boxes[db_ind, 2]
-            )
-            w = torch.log(
-                b_gt_boxes[gt_ind, 3] / self._default_boxes[db_ind, 3]
-            )
+            h = torch.log(b_gt_boxes[gt_ind, 2] / self._default_boxes[db_ind, 2])
+            w = torch.log(b_gt_boxes[gt_ind, 3] / self._default_boxes[db_ind, 3])
 
-            b_gt_boxes = torch.stack([cx, cy, h, w], 0)
-            b_boxes = b_boxes[db_ind]
+            b_gt_boxes = torch.stack([cx, cy, h, w], -1)
+            b_sel_boxes = b_boxes[db_ind]
 
-            loss = nn.functional.smooth_l1_loss(b_boxes, b_gt_boxes)
+            loss = nn.functional.smooth_l1_loss(b_sel_boxes, b_gt_boxes)
 
             all_losses.append(loss)
 
@@ -300,10 +292,8 @@ class SSDLocalCriterion(nn.Module):
 
 
 class SSDClassCriterion(nn.Module):
-    def __init__(self, args):
+    def __init__(self):
         super(SSDClassCriterion, self).__init__()
-
-        self._num_cls = args.num_cls
 
     def forward(
         self,
@@ -314,10 +304,16 @@ class SSDClassCriterion(nn.Module):
         neg_inds: list[torch.Tensor],
     ):
 
+        flatten_logits = []
+        for logit in logits:
+            flatten_logits.append(logit.flatten(1, 3))
+        flatten_logits = torch.cat(flatten_logits, 1)
+
         all_losses = []
         for b_logits, b_gt_labels, b_pairs, b_pos_ind, b_neg_ind in zip(
-            logits, gt_labels, pairs, pos_inds, neg_inds
+            flatten_logits, gt_labels, pairs, pos_inds, neg_inds
         ):
+
             ind = b_pairs[:, 0]
             gt_ind = b_pairs[:, 1]
 
@@ -327,7 +323,7 @@ class SSDClassCriterion(nn.Module):
             # compute confidence score for all objects
             b_conf = b_logits.softmax(-1)
             # select confidence score of POSITIVE objects
-            b_pos_conf = b_conf[ind, gt_ind]
+            b_pos_conf = b_conf[ind, b_gt_labels]
             # select confidence score of NEGATIVE objects
             b_neg_conf = b_conf[b_neg_ind, -1]
             # then apply hard negative mining to balance number between pos and neg
@@ -335,8 +331,8 @@ class SSDClassCriterion(nn.Module):
             b_neg_conf, _ = torch.sort(b_neg_conf, dim=-1, descending=True)
             b_neg_conf = b_neg_conf[:preserved_neg]
 
-            loss = (b_pos_conf.log().sum() + b_neg_conf.log().sum()) * -1
-            all_losses.append(loss)
+        loss = (b_pos_conf.log().sum() + b_neg_conf.log().sum()) * -1
+        all_losses.append(loss)
 
         return torch.stack(all_losses).mean()
 

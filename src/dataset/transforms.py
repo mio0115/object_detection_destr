@@ -27,7 +27,9 @@ class TransBoxCoord(nn.Module):
         norm: bool = False,
         from_type: Optional[BBoxType] = None,
         to_type: Optional[BBoxType] = None,
+        **kwargs,
     ):
+        super(TransBoxCoord, self).__init__(**kwargs)
         self._norm = norm
         self._from_type = from_type
         self._to_type = to_type
@@ -50,7 +52,7 @@ class TransBoxCoord(nn.Module):
                     boxes[..., 2] / w,
                     boxes[..., 3] / h,
                 ],
-                0,
+                -1,
             )
 
         if self._trans_fn:
@@ -91,14 +93,14 @@ class RandomPatchWithIoUBound(nn.Module):
                 scale = np.random.uniform(0.1, 1)
                 ar = np.random.uniform(0.5, 2)
 
-                patch_h = min(int(np.floor(np.sqrt(scale / ar)) * h), h)
-                patch_w = min(int(np.floor(np.sqrt(scale * ar)) * w), w)
+                patch_h = min(np.floor(np.sqrt(scale / ar) * h), h)
+                patch_w = min(np.floor(np.sqrt(scale * ar) * w), w)
 
                 # compute the coordinates on the original image
-                min_x = np.random.randint(0, w - patch_w)
-                min_y = np.random.randint(0, h - patch_h)
-                max_x = min_x + patch_h
-                max_y = min_y + patch_w
+                min_x = np.random.randint(0, w - patch_w + 1)
+                min_y = np.random.randint(0, h - patch_h + 1)
+                max_x = int(min_x + patch_h)
+                max_y = int(min_y + patch_w)
 
                 # drop objects not in the new image
                 x_mask = (boxes[..., 0] >= min_x) & (boxes[..., 0] <= max_x)
@@ -108,6 +110,7 @@ class RandomPatchWithIoUBound(nn.Module):
                     in_boxes = update_coord_new_boundary(
                         boxes[in_patch],
                         new_boundary=(min_x, min_y, max_x, max_y),
+                        origin_boundary=(h, w),
                     )
                     in_labels = labels[in_patch]
                     new_img = img[:, min_y:max_y, min_x:max_x]
@@ -132,9 +135,7 @@ def build_transform_ssd(trans_type: TransformTypes):
                 RandomPatchWithIoUBound(),
                 TransBoxCoord(norm=True),
                 v2.Resize(size=(300, 300)),
-                v2.Normalize(
-                    mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]
-                ),
+                v2.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
             ]
         )
     else:
@@ -146,9 +147,7 @@ def build_transform_ssd(trans_type: TransformTypes):
                     norm=True, from_type=BBoxType.XYXY, to_type=BBoxType.CXCYHW
                 ),
                 v2.Resize(size=(300, 300)),
-                v2.Normalize(
-                    mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]
-                ),
+                v2.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
             ]
         )
 
@@ -165,9 +164,7 @@ def build_transform(trans_type: TransformTypes):
                 v2.ToDtype(torch.float32, scale=True),
                 v2.RandomResizedCrop(size=640),
                 v2.RandomHorizontalFlip(0.5),
-                v2.Normalize(
-                    mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]
-                ),
+                v2.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
             ]
         )
     else:
@@ -178,9 +175,7 @@ def build_transform(trans_type: TransformTypes):
                 v2.ToDtype(torch.float32, scale=True),
                 v2.Resize(672),
                 v2.CenterCrop(640),
-                v2.Normalize(
-                    mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]
-                ),
+                v2.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
             ]
         )
 

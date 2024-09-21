@@ -24,6 +24,7 @@ from .bbox_utils import (
     gen_default_boxes,
     get_iou,
 )
+from .misc import to_device
 
 
 class HungarianMatcher(nn.Module):
@@ -74,9 +75,7 @@ class HungarianMatcher(nn.Module):
         out_prob = (
             outputs["pred_class"].flatten(0, 1).sigmoid()
         )  # [batch_size * num_queries, num_classes]
-        out_bbox = outputs["pred_boxes"].flatten(
-            0, 1
-        )  # [batch_size * num_queries, 4]
+        out_bbox = outputs["pred_boxes"].flatten(0, 1)  # [batch_size * num_queries, 4]
 
         # Also concat the target labels and boxes
 
@@ -90,9 +89,7 @@ class HungarianMatcher(nn.Module):
         neg_cost_class = (
             (1 - alpha) * (out_prob**gamma) * (-(1 - out_prob + 1e-8).log())
         )
-        pos_cost_class = (
-            alpha * ((1 - out_prob) ** gamma) * (-(out_prob + 1e-8).log())
-        )
+        pos_cost_class = alpha * ((1 - out_prob) ** gamma) * (-(out_prob + 1e-8).log())
         cost_class = pos_cost_class[:, tgt_ids] - neg_cost_class[:, tgt_ids]
 
         # Compute the L1 cost between boxes
@@ -111,8 +108,7 @@ class HungarianMatcher(nn.Module):
 
         sizes = [len(tgt["boxes"]) for tgt in targets]
         indices = [
-            linear_sum_assignment(c[i])
-            for i, c in enumerate(C.split(sizes, -1))
+            linear_sum_assignment(c[i]) for i, c in enumerate(C.split(sizes, -1))
         ]
         return [
             (
@@ -139,9 +135,7 @@ class HungarianMatcherWoL1(nn.Module):
         super().__init__()
         self.cost_class = cost_class
         self.cost_ciou = cost_ciou
-        assert (
-            self.cost_class != 0 or self.cost_ciou != 0
-        ), "all costs cant be 0"
+        assert self.cost_class != 0 or self.cost_ciou != 0, "all costs cant be 0"
 
     @torch.no_grad()
     def forward(self, outputs, targets):
@@ -167,9 +161,7 @@ class HungarianMatcherWoL1(nn.Module):
         out_prob = (
             outputs["pred_class"].flatten(0, 1).sigmoid()
         )  # [batch_size * num_queries, num_classes]
-        out_bbox = outputs["pred_boxes"].flatten(
-            0, 1
-        )  # [batch_size * num_queries, 4]
+        out_bbox = outputs["pred_boxes"].flatten(0, 1)  # [batch_size * num_queries, 4]
 
         # Also concat the target labels and boxes
         tgt_ids = torch.cat([tgt["labels"] for tgt in targets])
@@ -181,9 +173,7 @@ class HungarianMatcherWoL1(nn.Module):
         neg_cost_class = (
             (1 - alpha) * (out_prob**gamma) * (-(1 - out_prob + 1e-8).log())
         )
-        pos_cost_class = (
-            alpha * ((1 - out_prob) ** gamma) * (-(out_prob + 1e-8).log())
-        )
+        pos_cost_class = alpha * ((1 - out_prob) ** gamma) * (-(out_prob + 1e-8).log())
         cost_class = pos_cost_class[:, tgt_ids] - neg_cost_class[:, tgt_ids]
 
         # Compute the ciou cost betwen boxes
@@ -195,8 +185,7 @@ class HungarianMatcherWoL1(nn.Module):
 
         sizes = [len(tgt["boxes"]) for tgt in targets]
         indices = [
-            linear_sum_assignment(c[i])
-            for i, c in enumerate(C.split(sizes, -1))
+            linear_sum_assignment(c[i]) for i, c in enumerate(C.split(sizes, -1))
         ]
         return [
             (
@@ -220,10 +209,13 @@ class SimpleMatcher(nn.Module):
             device=args.device,
         )
         aspect_ratios = [[2], [2, 3], [2, 3], [2, 3], [2], [2]]
-        self._default_boxes = gen_default_boxes(
-            shapes=[38, 19, 10, 5, 3, 1],
-            scales=scales,
-            aspect_ratios=aspect_ratios,
+        self._default_boxes = to_device(
+            gen_default_boxes(
+                shapes=[37, 19, 10, 5, 3, 1],
+                scales=scales,
+                aspect_ratios=aspect_ratios,
+            ),
+            args.device,
         )
         self._device = args.device
 
@@ -231,9 +223,13 @@ class SimpleMatcher(nn.Module):
     def forward(
         self,
         outputs: dict[str : list[torch.Tensor]],
-        targets: dict[str : torch.Tensor],
+        targets: dict[str : list[torch.Tensor]],
     ):
-        all_boxes, gt_boxes_xyxy = outputs["boxes"], targets["boxes"]
+        all_boxes, gt_boxes = outputs["boxes"], targets["boxes"]
+
+        gt_boxes_xyxy = []
+        for b_gt in gt_boxes:
+            gt_boxes_xyxy.append(from_cxcyhw_to_xyxy(b_gt))
 
         pred_boxes = []
         for def_boxes, boxes in zip(self._default_boxes, all_boxes):
@@ -255,7 +251,7 @@ class SimpleMatcher(nn.Module):
             ious = get_iou(bbox1=b_boxes, bbox2=b_gt_boxes)
 
             max_ind = torch.argmax(ious, 0)
-            for pred_ind, gt_ind in enumerate(max_ind):
+            for gt_ind, pred_ind in enumerate(max_ind):
                 ious[pred_ind, gt_ind] = 0.0
 
             b_pairs = torch.cat(
@@ -263,7 +259,7 @@ class SimpleMatcher(nn.Module):
                     torch.stack(
                         [
                             max_ind,
-                            torch.arange(0, b_gt_boxes.shape[0]),
+                            torch.arange(0, b_gt_boxes.shape[0], device=self._device),
                         ],
                         -1,
                     ),
