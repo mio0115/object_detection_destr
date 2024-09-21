@@ -65,9 +65,12 @@ class WiderFace(tv_ds.WIDERFace):
 
 
 class VOCDetection(tv_ds.VOCDetection):
-    def __init__(self, transforms, augment_factor, *args, **kwargs):
-        super(VOCDetection, self).__init__(*args, **kwargs)
-        self._transforms = transforms
+    def __init__(self, root, transform, augment_factor, image_set):
+        if image_set == TransformTypes.VALID:
+            super(VOCDetection, self).__init__(root=root, image_set="trainval")
+        else:
+            super(VOCDetection, self).__init__(root=root, image_set=image_set.value)
+        self._transforms = transform
         self._augment_factor = augment_factor
 
         self._map_class = {
@@ -87,10 +90,10 @@ class VOCDetection(tv_ds.VOCDetection):
             "train": 13,
             "bottle": 14,
             "chair": 15,
-            "dining table": 16,
-            "potted plant": 17,
+            "diningtable": 16,
+            "pottedplant": 17,
             "sofa": 18,
-            "tv/monitor": 19,
+            "tvmonitor": 19,
         }
 
     def __len__(self) -> int:
@@ -102,8 +105,24 @@ class VOCDetection(tv_ds.VOCDetection):
         objects = targets["annotation"]["object"]
         labels, boxes = [], []
         for obj in objects:
-            labels.append(self._map_class[obj["name"][0]])
-            boxes.append([int(coord[0]) for coord in obj["bndbox"].values()])
+            if isinstance(obj["name"], list):
+                name = obj["name"][0]
+            elif isinstance(obj["name"], str):
+                name = obj["name"]
+            else:
+                breakpoint()
+            labels.append(self._map_class[name.lower().strip()])
+            boxes.append(
+                [
+                    int(coord)
+                    for coord in [
+                        obj["bndbox"]["xmin"],
+                        obj["bndbox"]["ymin"],
+                        obj["bndbox"]["xmax"],
+                        obj["bndbox"]["ymax"],
+                    ]
+                ]
+            )
 
         shape = [int(l[0]) for l in targets["annotation"]["size"].values()]
 
@@ -134,4 +153,9 @@ def voc_collate_fn(batch):
 
     img = torch.stack(img)
 
-    return img, targets
+    new_targets = {"boxes": [], "labels": []}
+    for tgt in targets:
+        new_targets["boxes"].append(tgt["boxes"])
+        new_targets["labels"].append(tgt["labels"])
+
+    return img, new_targets
