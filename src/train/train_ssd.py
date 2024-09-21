@@ -120,9 +120,7 @@ def train_one_epoch(
 
         g_step += 1
         if g_step % log_interval == 0:
-            avg_loss = (running_loss - prefix_loss) / (
-                log_interval * args.batch_size
-            )
+            avg_loss = (running_loss - prefix_loss) / (log_interval * args.batch_size)
 
             writer.add_scalar("Loss/train/loss", avg_loss, g_step)
             # writer.add_scalar("Loss/train/class", avg_loss_cls, g_step)
@@ -155,9 +153,7 @@ if __name__ == "__main__":
     model = build_model(args=args)
 
     other_params = [
-        param
-        for name, param in model.named_parameters()
-        if "backbone" not in name
+        param for name, param in model.named_parameters() if "backbone" not in name
     ]
     optim = torch.optim.AdamW(
         [
@@ -171,26 +167,25 @@ if __name__ == "__main__":
 
     matcher = build_matcher(SimpleMatcher, args)
     criterion = SSDCriterion(
-        num_classes=args.num_cls,
         matcher=matcher,
         loss_fns={
-            "class": SSDClassCriterion(args),
+            "class": SSDClassCriterion(),
             "local": SSDLocalCriterion(args),
         },
-        loss_coef=args.class_loss_coef,
+        loss_coef=args.coef_class_loss,
     ).to(args.device)
     # metric = MeanAveragePrecision().to("cpu")
 
     path_to_dataset = os.path.join(os.getcwd(), "dataset")
     train_ds = VOCDetection(
         root=path_to_dataset,
-        split=TransformTypes.TRAIN,
+        image_set=TransformTypes.TRAIN,
         transform=build_transform_ssd(trans_type=TransformTypes.TRAIN),
         augment_factor=5,
     )
     valid_ds = VOCDetection(
         root=path_to_dataset,
-        split=TransformTypes.VALID,
+        image_set=TransformTypes.VALID,
         transform=build_transform_ssd(trans_type=TransformTypes.VALID),
         augment_factor=1,
     )
